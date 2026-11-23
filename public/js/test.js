@@ -7,6 +7,7 @@ const api = (op, p = {}) => '/api/index?' + new URLSearchParams({ op, ...p });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const LS = 'gd.session.' + AID;
 
+const DIDI = '<svg class="didi-art" viewBox="0 0 120 120" aria-hidden="true"><path d="M22 66c0-28 17-46 38-46s38 18 38 46v30H22z" fill="#2B1B3A"/><path d="M16 120c2-21 20-31 44-31s42 10 44 31z" fill="#0E8C8C"/><path d="M40 92c6 12 34 12 40 0l8 4c-10 20-46 20-56 0z" fill="#E23D8C"/><rect x="51" y="76" width="18" height="20" rx="7" fill="#BF7F56"/><ellipse cx="60" cy="58" rx="26" ry="28" fill="#D49B70"/><path d="M33 56c1-20 14-31 27-31s26 11 27 31c-9-4-19-12-27-23-8 11-18 19-27 23z" fill="#2B1B3A"/><circle cx="60" cy="43" r="2.8" fill="#E23D8C"/><ellipse cx="49.5" cy="58" rx="3.2" ry="3.8" fill="#2B1B3A"/><ellipse cx="70.5" cy="58" rx="3.2" ry="3.8" fill="#2B1B3A"/><circle cx="50.6" cy="56.6" r="1.1" fill="#fff"/><circle cx="71.6" cy="56.6" r="1.1" fill="#fff"/><circle cx="43" cy="68" r="5" fill="#E9806A" opacity=".45"/><circle cx="77" cy="68" r="5" fill="#E9806A" opacity=".45"/><path class="mouth" d="M51 70c5 6.5 13 6.5 18 0" stroke="#7A2B2B" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="33" cy="69" r="4" fill="#FFC83D"/><circle cx="87" cy="69" r="4" fill="#FFC83D"/></svg>';
 const icon = {
   mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>',
@@ -134,7 +135,7 @@ const rec = (() => {
 
 // ---------- shell ----------
 function shell(inner, { bar = true } = {}) {
-  app.innerHTML = `${bar ? `<header class="topbar"><span class="mark"><i>दी</i>Garima Didi</span><span class="sync" id="sync">All saved</span></header>` : ''}${inner}`;
+  app.innerHTML = `${bar ? `<header class="topbar"><span class="mark">${DIDI}Garima Didi</span><span class="sync" id="sync">All saved</span></header>` : ''}${inner}`;
   queue.onChange(paintSync);
 }
 function paintSync(n) {
@@ -148,9 +149,8 @@ addEventListener('offline', () => queue.pending().then((p) => paintSync(p.length
 function welcome(error) {
   const resume = S && !S.finished;
   shell(`<main class="welcome">
-    <div class="hello"><div class="big">नमस्ते!</div>
-      <h1>I am Garima Didi.</h1>
-      <p>Today we will talk in English. I ask, you answer. It takes about ${A.minutes} minutes.</p></div>
+    <div class="greet"><span class="wave">${DIDI}</span><div class="bubble"><div class="big">नमस्ते!</div><h1>I am Garima Didi.</h1></div></div>
+    <p class="intro-line">Today we will talk in English. I ask, you answer. It takes about ${A.minutes} minutes.</p>
     ${resume ? `<div class="page plain"><h3>Welcome back, ${esc(S.name)}</h3><p class="soft small" style="margin:.25rem 0 1rem">Your answers so far are saved.</p>
       <button class="btn wide" id="go">Continue my test</button>
       <p style="margin-top:.875rem;text-align:center"><button class="link small" id="fresh">I am a different student</button></p></div>` : `
@@ -163,7 +163,7 @@ function welcome(error) {
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
       <button class="btn wide" id="go">Next</button>
     </form>`}
-    <p class="soft small">Your voice is recorded so that your teacher can listen to your answers.</p>
+    <p class="small">Your voice is recorded so that your teacher can listen to your answers.</p>
   </main>`, { bar: false });
   if (resume) {
     document.getElementById('go').onclick = () => { voice.unlock(); check(); };
@@ -225,7 +225,7 @@ async function check() {
   ready();
 }
 async function greet() {
-  shell(`<main class="stage"><div class="page"><div class="didi"><span class="face">दी</span><span class="hear playing"><span class="bars"><i></i><i></i><i></i></span>Didi is speaking</span></div>
+  shell(`<main class="stage"><div class="page"><div class="didi speaking">${DIDI}<span class="hear playing"><span class="bars"><i></i><i></i><i></i></span>Didi is speaking</span></div>
     <p class="ask">${esc(A.greeting)}</p><p class="hindi-line hi">${esc(A.greetingHi)}</p></div>
     <button class="btn wide" id="skip">I am ready</button></main>`);
   await Promise.race([voice.say('greeting', A.greeting), new Promise((r) => { document.getElementById('skip').onclick = r; })]);
@@ -245,12 +245,12 @@ function run() {
     return esc(card.text).replace(/___/g, () => { const o = card.options?.[i++]; return o ? `<span class="opt">${esc(o.join(' / '))}</span>` : '<u></u>'; });
   };
   shell(`
-    <div class="parts">${A.sections.map((s, i) => `<span><b style="width:${i < secIdx ? 100 : i === secIdx ? Math.round((k / inSec.length) * 100) : 0}%"></b></span>`).join('')}</div>
-    <div class="where"><span>Part ${secIdx + 1} of ${A.sections.length}: <strong>${esc(sec.title)}</strong></span><span>${k + 1} of ${inSec.length}</span></div>
+    <ol class="trail" aria-label="Part ${secIdx + 1} of ${A.sections.length}">${A.sections.map((x, i) => `<li class="${i < secIdx ? 'done' : i === secIdx ? 'now' : ''}">${i < secIdx ? '★' : i + 1}</li>`).join('')}</ol>
+    <div class="where"><strong>${esc(sec.title)}</strong><span>Question ${k + 1} of ${inSec.length}</span></div>
     <main class="stage">
       ${sec.image ? `<div class="pic-wrap"><img class="pic" src="${sec.image}" alt="The picture for this question"><button id="zoom">Make it bigger</button></div>` : ''}
       <div class="page">
-        <div class="didi"><span class="face">दी</span><button class="hear" id="hear">${icon.ear}<span>Hear it again</span></button></div>
+        <div class="didi" id="didi">${DIDI}<button class="hear" id="hear">${icon.ear}<span>Hear it again</span></button></div>
         ${speak ? `<p class="ask ${wordsHidden ? 'hidden-words' : ''}" id="ask">${wordsHidden ? 'Listen to Didi, then answer.' : esc(card.say)}</p>`
           : `<p class="gap-text"><span class="count">${k + 1}</span>${gapHTML()}</p>${card.extra ? `<p class="soft" style="line-height:var(--line)">${esc(card.extra)}</p>` : ''}`}
         <div class="help">${wordsHidden ? '<button class="link" id="words">Show the words</button>' : ''}<button class="link hi" id="hindi">हिंदी में</button></div>
@@ -263,11 +263,11 @@ function run() {
 
   const hearBtn = document.getElementById('hear');
   const playQ = async (withIntro) => {
-    hearBtn.classList.add('playing'); hearBtn.querySelector('span').textContent = 'Didi is speaking';
+    hearBtn.classList.add('playing'); document.getElementById('didi')?.classList.add('speaking'); hearBtn.querySelector('span').textContent = 'Didi is speaking';
     let ok = true;
     if (withIntro) ok = await voice.say('intro-' + sec.id, sec.intro);
     if (ok) await voice.say(speak ? card.id : 'say-' + sec.id, line);
-    if (document.body.contains(hearBtn)) { hearBtn.classList.remove('playing'); hearBtn.querySelector('span').textContent = 'Hear it again'; }
+    if (document.body.contains(hearBtn)) { document.getElementById('didi')?.classList.remove('speaking'); hearBtn.classList.remove('playing'); hearBtn.querySelector('span').textContent = 'Hear it again'; }
   };
   hearBtn.onclick = () => { if (!rec.on) playQ(false); };
   document.getElementById('hindi').onclick = () => { document.getElementById('hl').hidden = false; };
@@ -284,7 +284,7 @@ function run() {
     document.getElementById('skip').onclick = () => { voice.stop(); S.done[card.id] = 'skipped'; next(); };
   };
   const begin = async () => {
-    voice.stop(); hearBtn.classList.remove('playing');
+    voice.stop(); hearBtn.classList.remove('playing'); document.getElementById('didi')?.classList.remove('speaking');
     try {
       await rec.start((l) => { const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); });
     } catch { return idle('Please allow the microphone and try again'); }
@@ -301,23 +301,40 @@ function run() {
     recorded();
   };
   const recorded = () => {
-    dock.innerHTML = `<p class="dock-say" style="color:var(--green)">Saved. Well done!</p>
+    dock.innerHTML = `<p class="dock-say"><span class="saved"><b>★</b>Saved. Well done!</span></p>
       <span class="left" style="display:flex;gap:.25rem"><button class="mini" id="again">${icon.redo}Again</button>${last ? `<button class="mini" id="mine">${icon.play}Hear me</button>` : ''}</span>
       <span></span><span class="right"><button class="btn" id="next">Next</button></span>`;
     document.getElementById('again').onclick = () => idle();
     document.getElementById('next').onclick = next;
     if (last) document.getElementById('mine').onclick = () => { voice.stop(); const a = new Audio(URL.createObjectURL(last.blob)); a.play().catch(() => {}); };
   };
-  const next = () => { clearInterval(tick); S.pos++; save(); scrollTo(0, 0); run(); };
+  const next = () => {
+    clearInterval(tick); voice.stop(); S.pos++; save(); scrollTo(0, 0);
+    const nx = steps[S.pos];
+    if (nx && nx.section !== sec) return cheer(secIdx, nx.section);
+    run();
+  };
 
   if (S.done[card.id] === 'recorded') recorded(); else idle();
   playQ(k === 0 && S.done[card.id] !== 'recorded');
+  void secIdx;
+}
+
+// ---------- between parts: a star and a breath ----------
+const PRAISE = ['Very good!', 'Shabash!', 'You are doing so well!', 'Wonderful!', 'Keep going!', 'Almost there!'];
+function cheer(doneIdx, nextSec) {
+  shell(`<main class="cheer">${DIDI}
+    <div class="stars">${A.sections.map((x, i) => `<span class="${i <= doneIdx ? 'got' : ''} ${i === doneIdx ? 'new' : ''}">★</span>`).join('')}</div>
+    <h1>${PRAISE[doneIdx % PRAISE.length]}</h1>
+    <p>You finished part ${doneIdx + 1}. ${A.sections.length - doneIdx - 1 === 1 ? 'Only 1 part to go.' : `${A.sections.length - doneIdx - 1} parts to go.`}</p>
+    <button class="btn" id="on">Next: ${esc(nextSec.title)}</button></main>`);
+  document.getElementById('on').onclick = run;
 }
 
 // ---------- 4. done ----------
 async function finish() {
   voice.say('done', 'Shabash! You have finished the test. Well done.');
-  shell(`<main class="finish"><div class="stamp in">शाबाश!</div><h1>You finished the test, ${esc(S.name.split(' ')[0])}.</h1>
+  shell(`<main class="finish">${DIDI.replace('class="didi-art"', 'class="didi-art" style="width:8rem;height:8rem;background:#fff"')}<div class="stamp in">शाबाश!</div><h1>You finished the test, ${esc(S.name.split(' ')[0])}.</h1>
     <p id="ft" class="soft">Sending your answers to your teacher. Please keep this page open.</p>
     <div class="meter" style="width:100%;max-width:18rem"><b id="fb" style="background:var(--blue)"></b></div></main>`);
   const total = Object.values(S.done).filter((v) => v === 'recorded').length || 1;
@@ -338,7 +355,7 @@ async function finish() {
   }
   S.finished = true; save();
   const ft = document.getElementById('ft');
-  if (ft) { ft.textContent = 'All your answers are with your teacher. You can close this page now.'; ft.style.color = 'var(--green)'; ft.style.fontWeight = '600'; }
+  if (ft) { ft.textContent = 'All your answers are with your teacher. You can close this page now.'; ft.style.color = 'var(--ink)'; ft.style.fontWeight = '700'; }
   // Marking starts here so results are ready when the teacher opens them. If the page closes, the teacher screen picks it up.
   for (const id of sections) { try { await fetch(api('mark'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: S.sid, key: S.key, section: id }) }); } catch {} }
 }

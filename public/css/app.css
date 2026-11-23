@@ -89,7 +89,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .where { padding: .5rem 1rem 0; font-size: .9375rem; color: var(--ink-soft); display: flex; justify-content: space-between; }
 .where strong { color: var(--ink); font-weight: 600; }
 
-.stage { flex: 1; padding: 1rem 1rem 10.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.stage { flex: 1; padding: 1rem 1rem 12rem; display: flex; flex-direction: column; gap: 1rem; }
 
 /* Didi asks */
 .didi { display: flex; align-items: center; gap: .75rem; margin-left: -1.75rem; margin-bottom: var(--line); height: var(--line); }
@@ -310,3 +310,83 @@ audio { width: 100%; height: 2.5rem; }
 .spin { width: 1.125rem; height: 1.125rem; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: rot .7s linear infinite; display: inline-block; vertical-align: -3px; }
 @keyframes rot { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ================= the child's side: sunny, with Didi ================= */
+:root { --sun: #FFC83D; --sun-deep: #F0A800; --rani: #E23D8C; --teal: #0E8C8C; }
+body { --bg: var(--paper); }
+body.kid {
+  --bg: var(--sun); --ink-soft: #4F4A68; background-color: var(--sun);
+  background-image: radial-gradient(circle at 92% -4%, #FFE08A 0 9rem, transparent 9.05rem), radial-gradient(circle at -6% 38%, #FFD45E 0 6rem, transparent 6.05rem), radial-gradient(circle at 104% 78%, #FFD45E 0 7rem, transparent 7.05rem);
+  background-attachment: fixed;
+}
+body.kid h1, body.kid .ask, body.kid .gap-text { font-weight: 700; }
+.didi-art { display: block; border-radius: 50%; background: #FFE9A8; }
+.mark .didi-art { width: 2.25rem; height: 2.25rem; background: #fff; }
+body.kid .sync { background: #fff; color: var(--ink); }
+body.kid .page, body.kid .door { box-shadow: 0 5px 0 rgba(120, 80, 0, .22); }
+body.kid .page { border-radius: 6px 20px 20px 6px; }
+body.kid .page.plain { border-radius: 20px; }
+body.kid .btn { min-height: 3.5rem; border-radius: 1.125rem; font-size: 1.25rem; box-shadow: 0 4px 0 var(--blue-deep); }
+body.kid .btn.quiet { box-shadow: inset 0 0 0 2.5px var(--ink); color: var(--ink); }
+body.kid .btn[disabled] { background: #fff; color: #A9A38C; box-shadow: 0 4px 0 rgba(120, 80, 0, .18); }
+body.kid .link { color: var(--ink); }
+body.kid .page .link { color: var(--blue); }
+body.kid .goal { color: var(--ink); font-weight: 500; }
+body.kid .chips span { box-shadow: 0 3px 0 rgba(120, 80, 0, .2); border-radius: 99px; font-weight: 600; }
+body.kid .pic { border: 4px solid #fff; border-radius: 18px; box-shadow: 0 5px 0 rgba(120, 80, 0, .22); }
+body.kid .field input { border-color: #E6DDC0; border-radius: 1rem; }
+body.kid .meter { background: #F1EAD2; }
+
+/* welcome */
+.greet { display: grid; grid-template-columns: auto 1fr; gap: .75rem; align-items: end; padding-top: 1rem; }
+.greet .didi-art { width: 7.5rem; height: 7.5rem; background: #fff; box-shadow: 0 5px 0 rgba(120, 80, 0, .22); }
+.bubble { position: relative; background: #fff; border-radius: 1.5rem 1.5rem 1.5rem .375rem; padding: 1rem 1.125rem; box-shadow: 0 5px 0 rgba(120, 80, 0, .22); margin-bottom: 1.5rem; }
+.bubble .big { font: 700 2.25rem/1.1 var(--hindi); color: var(--rani); }
+.bubble h1 { font-size: 1.5rem; margin-top: .25rem; }
+.intro-line { font: 500 1.1875rem/1.45 var(--text); }
+.wave { transform-origin: 60% 90%; animation: wave 1.6s ease-in-out 2; }
+@keyframes wave { 20% { transform: rotate(-5deg); } 50% { transform: rotate(4deg); } 80% { transform: rotate(-3deg); } }
+
+/* the trail of seven parts */
+.trail { display: flex; align-items: center; justify-content: space-between; list-style: none; margin: 0; padding: .5rem 1rem 0; position: relative; }
+.trail::before { content: ''; position: absolute; left: 1.75rem; right: 1.75rem; top: calc(.5rem + 1.0625rem); border-top: 3px dashed rgba(23, 34, 77, .28); }
+.trail li { position: relative; width: 2.125rem; height: 2.125rem; border-radius: 50%; background: #fff; display: grid; place-items: center; font: 700 1rem/1 var(--display); color: var(--ink-soft); padding-top: 2px; }
+.trail li.done { background: var(--rani); color: #fff; font-size: 1.125rem; padding-top: 0; }
+.trail li.now { background: var(--ink); color: #fff; transform: scale(1.22); box-shadow: 0 0 0 4px rgba(255, 255, 255, .7); }
+body.kid .where { color: var(--ink); padding-top: .75rem; font-size: 1rem; }
+body.kid .where strong { font: 700 1.125rem/1 var(--display); }
+
+/* Didi asks */
+body.kid .didi { margin-left: -2.5rem; height: var(--line); margin-bottom: calc(var(--line) + .25rem); }
+.didi .didi-art { flex: none; width: 4rem; height: 4rem; box-shadow: 0 0 0 4px #fff; background: var(--sun); }
+.speaking .mouth { animation: talk .32s ease-in-out infinite alternate; transform-origin: 60px 71px; }
+@keyframes talk { to { transform: scaleY(2.1) translateY(.5px); } }
+body.kid .hear { height: 2.75rem; background: var(--ink); color: #fff; font-size: 1.0625rem; }
+body.kid .hear.playing { background: var(--rani); }
+
+/* the record dock */
+body.kid .dock { background: linear-gradient(180deg, rgba(255, 200, 61, 0), var(--sun) 2.25rem); }
+body.kid .rec { width: 6rem; height: 6rem; border: 5px solid #fff; box-shadow: 0 6px 0 rgba(120, 30, 20, .55), 0 0 0 calc(var(--lvl) * 24px) rgba(212, 50, 44, .25); }
+body.kid .rec:not(.on):not([disabled]) { animation: nudge 2.4s ease-in-out infinite; }
+@keyframes nudge { 0%, 70%, 100% { transform: scale(1); } 80% { transform: scale(1.07); } 90% { transform: scale(.98); } }
+body.kid .rec.on { border-color: var(--red); box-shadow: 0 0 0 calc(8px + var(--lvl) * 28px) rgba(212, 50, 44, .28); animation: none; }
+body.kid .dock-say { font-size: 1.1875rem; font-weight: 700; }
+body.kid .dock-say.live { color: #A3201B; }
+body.kid .timer { color: var(--ink); background: #fff; padding: .5rem .75rem; border-radius: 99px; }
+body.kid .mini { color: var(--ink); font-weight: 700; }
+body.kid .mini svg { box-shadow: 0 3px 0 rgba(120, 80, 0, .22); }
+.saved { display: inline-flex; align-items: center; gap: .5rem; background: #fff; color: var(--green); padding: .375rem 1rem .375rem .5rem; border-radius: 99px; box-shadow: 0 3px 0 rgba(120, 80, 0, .2); }
+.saved b { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 50%; background: var(--rani); color: #fff; font-size: 1rem; animation: pop .5s cubic-bezier(.2, 1.8, .4, 1) both; }
+@keyframes pop { from { transform: scale(0) rotate(-90deg); } }
+
+/* a part is finished */
+.cheer { flex: 1; display: grid; align-content: center; justify-items: center; gap: 1rem; text-align: center; padding: 2rem 1.25rem 3rem; }
+.cheer .didi-art { width: 9rem; height: 9rem; background: #fff; box-shadow: 0 6px 0 rgba(120, 80, 0, .22); }
+.cheer .stars { display: flex; gap: .375rem; }
+.cheer .stars span { width: 2.25rem; height: 2.25rem; border-radius: 50%; background: rgba(255, 255, 255, .55); display: grid; place-items: center; font-size: 1.25rem; color: transparent; }
+.cheer .stars span.got { background: var(--rani); color: #fff; }
+.cheer .stars span.new { animation: pop .6s cubic-bezier(.2, 1.8, .4, 1) .25s both; }
+.cheer h1 { font-size: 2.25rem; }
+.cheer p { font: 500 1.1875rem/1.4 var(--text); max-width: 20rem; }
+body.kid .finish .stamp { background: #fff; }
+body.kid .finish .soft { color: var(--ink); }
