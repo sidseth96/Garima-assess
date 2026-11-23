@@ -97,6 +97,9 @@ const ops = {
     return Object.values(ASSESSMENTS).map((a) => ({ id: a.id, title: a.title, subtitle: a.subtitle, minutes: a.minutes, total: a.total }));
   },
 
+  // Which AI services this site is wired to (no secrets). ?code=<teacher code>
+  async status(req, q) { need(q.code === TEACHER_CODE, 403, 'Not allowed'); return ai.status(); },
+
   async assessment(req, q) {
     const a = getAssessment(q.id || 'ttm'); need(a, 404, 'No such test');
     return publicView(a);
