@@ -136,7 +136,7 @@ async function paper(sid) {
       </div>`;
 
     function sectionHTML(sec) {
-      const m = sec.mark; if (!m) return '<p class="nothing" style="margin-top:1rem">Not marked yet.</p>';
+      const m = sec.mark; if (!m) return '<p class="nothing" style="margin-top:1rem">Not marked yet. Didi could not mark this part just now. Use "Mark again with Didi" below in a little while.</p>';
       if (m.kind === 'speak') return m.cards.map((c) => {
         const q = sec.cards.find((x) => x.id === c.id); const clip = D.clips[c.id];
         return `<div class="card-m"><p class="q">${esc(q.say)}</p>

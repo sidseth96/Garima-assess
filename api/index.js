@@ -159,6 +159,7 @@ const ops = {
         if (f) { try { const t = await ai.transcribe(f.buffer, c.mime); c.text = t.text; delete c.sttError; await store.put(`${dir(S.sid)}t-${u.id}-${now()}.json`, c); } catch {} }
       }
     }
+    need(!(section.cards || section.items).some((u) => S.clips[u.id]?.clip && S.clips[u.id].text == null), 503, 'Recordings could not be turned into text yet. Try again in a little while.');
     const m = await markSection(section, S.clips);
     m.at = now();
     await store.put(`${dir(S.sid)}mark-${section.id}-${now()}.json`, m);
