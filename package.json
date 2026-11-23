@@ -1,0 +1,8 @@
+{
+  "name": "garima-assess",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "node dev/server.mjs" },
+  "dependencies": { "@vercel/blob": "latest" },
+  "engines": { "node": "22.x" }
+}

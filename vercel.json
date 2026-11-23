@@ -1,0 +1,6 @@
+{
+  "functions": { "api/index.js": { "maxDuration": 300 } },
+  "headers": [
+    { "source": "/img/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=2592000" }] }
+  ]
+}
