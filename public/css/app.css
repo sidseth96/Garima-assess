@@ -64,7 +64,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
   background-image:
     linear-gradient(90deg, transparent 2.25rem, var(--margin) 2.25rem, var(--margin) calc(2.25rem + 1.5px), transparent calc(2.25rem + 1.5px)),
     repeating-linear-gradient(180deg, transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line));
-  background-position: 0 0, 0 .5rem;
+  background-position: 0 0, 0 calc(1.5rem + 5px);   /* rules sit just under each line of writing, never through it */
   padding: 1.5rem 1.125rem 1.5rem 3.125rem;
 }
 .page.plain { background-image: none; padding: 1.25rem; border-radius: 14px; }
@@ -107,7 +107,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 @keyframes bar { 50% { height: 100%; } }
 
 .ask { font: 600 1.5rem/var(--line) var(--display); color: var(--ink); }
-.ask.hidden-words { color: var(--ink-soft); font-weight: 500; font-size: 1.125rem; }
+.ask.hidden-words { color: var(--ink); font-size: 1.25rem; }
 .help { margin-top: var(--line); display: flex; gap: 1.25rem; line-height: var(--line); font-size: .9375rem; }
 .hindi-line { font: 400 1.0625rem/var(--line) var(--hindi); color: var(--ink-soft); margin-top: var(--line); }
 
@@ -357,7 +357,7 @@ body.kid .where { color: var(--ink); padding-top: .75rem; font-size: 1rem; }
 body.kid .where strong { font: 700 1.125rem/1 var(--display); }
 
 /* Didi asks */
-body.kid .didi { margin-left: -2.5rem; height: var(--line); margin-bottom: calc(var(--line) + .25rem); }
+body.kid .didi { margin-left: -2.5rem; height: var(--line); margin-bottom: var(--line); }
 .didi .didi-art { flex: none; width: 4rem; height: 4rem; box-shadow: 0 0 0 4px #fff; background: var(--sun); }
 .speaking .mouth { animation: talk .32s ease-in-out infinite alternate; transform-origin: 60px 71px; }
 @keyframes talk { to { transform: scaleY(2.1) translateY(.5px); } }
@@ -390,3 +390,6 @@ body.kid .mini svg { box-shadow: 0 3px 0 rgba(120, 80, 0, .22); }
 .cheer p { font: 500 1.1875rem/1.4 var(--text); max-width: 20rem; }
 body.kid .finish .stamp { background: #fff; }
 body.kid .finish .soft { color: var(--ink); }
+
+body.kid .page { --rule: #DCE5F6; }
+body.kid .page .link { text-decoration-thickness: 2px; text-underline-offset: 2px; }
