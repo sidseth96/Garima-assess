@@ -359,8 +359,11 @@ body.kid .where strong { font: 700 1.125rem/1 var(--display); }
 /* Didi asks */
 body.kid .didi { margin-left: -2.5rem; height: var(--line); margin-bottom: var(--line); }
 .didi .didi-art { flex: none; width: 4rem; height: 4rem; box-shadow: 0 0 0 4px #fff; background: var(--sun); }
-.speaking .mouth { animation: talk .32s ease-in-out infinite alternate; transform-origin: 60px 71px; }
-@keyframes talk { to { transform: scaleY(2.1) translateY(.5px); } }
+.mouth-open { opacity: 0; transform-box: fill-box; transform-origin: 50% 0; }
+.speaking .mouth-smile { opacity: 0; }
+.speaking .mouth-open { opacity: 1; animation: talk .9s ease-in-out infinite; }
+@keyframes talk { 0%, 100% { transform: scaleY(.5); } 14% { transform: scaleY(1); } 30% { transform: scaleY(.6); } 46% { transform: scaleY(.92); } 62% { transform: scaleY(.48); } 80% { transform: scaleY(.8); } }
+@media (prefers-reduced-motion: reduce) { .speaking .mouth-open { transform: scaleY(.6); } }
 body.kid .hear { height: 2.75rem; background: var(--ink); color: #fff; font-size: 1.0625rem; }
 body.kid .hear.playing { background: var(--rani); }
 
