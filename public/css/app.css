@@ -554,3 +554,15 @@ body.desk-page .btn[disabled] { background: #C9CFDC; }
 .t-note-box.strong { background: var(--marigold-wash); box-shadow: none; }
 body.desk-page a.btn { text-decoration: none; }
 .register .who .t-flag { white-space: nowrap; }
+
+/* say more, and recording while the picture is enlarged */
+.more-ask { text-align: center; font: 700 1.1875rem/1.2 var(--display); color: var(--ink); }
+.answer .btn.wide svg { width: 1.375rem; height: 1.375rem; }
+.answer-acts .addlink { grid-column: 1 / -1; justify-self: center; padding: .25rem; }
+body.kid .answer-acts .btn.quiet#next { box-shadow: inset 0 0 0 2.5px var(--ink); }
+.zoom { z-index: 15; padding-bottom: 13rem; }
+.zoom button { z-index: 16; }
+body.zooming .topbar, body.zooming .trail, body.zooming .where, body.zooming .stage { visibility: hidden; }
+body.zooming .dock { background: linear-gradient(180deg, rgba(14, 21, 51, 0), #0E1533 2.25rem); }
+body.zooming .dock-say { color: #fff; } body.zooming .dock-say.live { color: #FFB4AE; }
+body.zooming .dock .link { color: #fff; }

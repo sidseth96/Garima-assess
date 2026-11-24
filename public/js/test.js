@@ -47,7 +47,7 @@ const queue = (() => {
         if (!navigator.onLine) break;
         try {
           const r = await fetch(api('clip', { sid: c.sid, key: c.key, item: c.item, mime: c.mime, dur: c.dur }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: c.blob });
-          if (r.ok || r.status === 400 || r.status === 413) { c.sent = true; if (db) await tx('readwrite', (st) => st.put({ ...c, blob: null })); else mem.set(c.id, c); notify(); }
+          if (r.ok || r.status === 400 || r.status === 413) { const cur = (await all()).find((x) => x.id === c.id); if (cur && cur.rev !== c.rev) continue; c.sent = true; if (db) await tx('readwrite', (st) => st.put({ ...c, blob: null })); else mem.set(c.id, c); notify(); }
           else break;
         } catch { break; }
       }
@@ -116,21 +116,30 @@ const rec = (() => {
     };
     if (ctx.state === 'suspended') ctx.resume(); loop();
   }
+  let active = 0, flush = null;
+  function release() { try { if (mr && mr.state !== 'inactive') mr.stop(); } catch {} mr = null; }
   async function start(cb) {
-    await mic(); chunks = [];
+    await mic(); release(); chunks = []; active = 0;
     mr = new MediaRecorder(stream, { mimeType: mime() || undefined, audioBitsPerSecond: 24000 });
-    mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); if (flush) flush(); };
     mr.start(1000); t0 = Date.now(); watch(cb);
   }
+  // Pauses and hands back everything recorded so far. The recorder stays open so more can be added.
   function stop() {
     return new Promise((res) => {
       cancelAnimationFrame(raf); onLevel(0);
-      if (!mr || mr.state === 'inactive') return res(null);
-      mr.onstop = () => res({ blob: new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), mime: mr.mimeType || 'audio/webm', dur: Math.round((Date.now() - t0) / 1000) });
-      setTimeout(() => mr.stop(), 450);   // keep listening a moment so the last word is not cut off
+      if (!mr || mr.state !== 'recording') return res(null);
+      const m = mr;
+      setTimeout(() => {   // keep listening a moment so the last word is not cut off
+        if (m.state !== 'recording') return res(null);
+        m.pause(); active += Date.now() - t0;
+        const done = () => { flush = null; res({ blob: new Blob(chunks, { type: m.mimeType || 'audio/webm' }), mime: m.mimeType || 'audio/webm', dur: Math.round(active / 1000) }); };
+        flush = done; try { m.requestData(); } catch { done(); } setTimeout(() => flush && flush(), 700);
+      }, 450);
     });
   }
-  return { mic, watch, unwatch: () => cancelAnimationFrame(raf), start, stop, get on() { return mr && mr.state === 'recording'; }, ok: () => !!(navigator.mediaDevices && window.MediaRecorder) };
+  function more(cb) { if (!mr || mr.state !== 'paused') return false; mr.resume(); t0 = Date.now(); watch(cb); return true; }
+  return { mic, watch, unwatch: () => cancelAnimationFrame(raf), start, stop, more, release, get canAdd() { return !!mr && mr.state === 'paused'; }, get on() { return mr && mr.state === 'recording'; }, ok: () => !!(navigator.mediaDevices && window.MediaRecorder) };
 })();
 
 // ---------- shell ----------
@@ -216,7 +225,7 @@ async function check() {
   };
   document.getElementById('start').onclick = async () => { rec.unwatch(); if (S.pos === 0 && !Object.keys(S.done).length) await greet(); run(); };
   if (!loaded) {
-    const keys = ['greeting', 'done', ...(A.praise || []).map((x, i) => 'p' + (i + 1)), ...A.sections.flatMap((s) => ['intro-' + s.id, ...(s.kind === 'blanks' ? ['say-' + s.id] : s.cards.map((c) => c.id))])];
+    const keys = ['greeting', 'done', 'more', 'nohear', ...(A.praise || []).map((x, i) => 'p' + (i + 1)), ...A.sections.flatMap((s) => ['intro-' + s.id, ...(s.kind === 'blanks' ? ['say-' + s.id] : s.cards.map((c) => c.id))])];
     A.sections.forEach((s) => { if (s.image) new Image().src = s.image; });
     await voice.preload(keys, (p) => { const b = document.getElementById('dlbar'); if (b) b.style.width = Math.round(p * 100) + '%'; });
     loaded = true;
@@ -274,7 +283,7 @@ function run() {
   if (wordsHidden) document.getElementById('words').onclick = (e) => { const a = document.getElementById('ask'); a.textContent = card.say; a.classList.remove('hidden-words'); e.target.remove(); };
   if (sec.image) document.getElementById('zoom').onclick = () => {
     const z = document.createElement('div'); z.className = 'zoom'; z.innerHTML = `<img src="${sec.image}" alt=""><button>Close</button>`;
-    z.querySelector('button').onclick = () => z.remove(); document.body.append(z);
+    z.querySelector('button').onclick = () => { z.remove(); document.body.classList.remove('zooming'); }; document.body.append(z); document.body.classList.add('zooming');
   };
 
   const dock = document.getElementById('dock'); const maxSec = speak ? 150 : 60; let tick = 0; let last = null;
@@ -284,34 +293,53 @@ function run() {
     document.getElementById('rec').onclick = begin;
     document.getElementById('skip').onclick = () => { voice.stop(); S.done[card.id] = 'skipped'; next(); };
   };
-  const begin = async () => {
-    voice.stop(); hearBtn.classList.remove('playing'); document.getElementById('didi')?.classList.remove('speaking');
-    try {
-      await rec.start((l) => { const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); });
-    } catch { return idle('Please allow the microphone and try again'); }
-    dock.innerHTML = `<p class="dock-say live">I am listening. Press to stop.</p><span class="left timer" id="tm">0:00</span><button class="rec on" id="rec" aria-label="Stop recording">${icon.stop}</button><span class="right"></span>`;
+  let voiced = 0, misses = 0, nudged = false, rev = 0;
+  const level = (l) => { if (l > 0.12) voiced++; const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); };
+  const listening = (from) => {
+    dock.classList.remove('after');
+    dock.innerHTML = `<p class="dock-say live">I am listening. Press to stop.</p><span class="left timer" id="tm"></span><button class="rec on" id="rec" aria-label="Stop recording">${icon.stop}</button><span class="right"></span>`;
     document.getElementById('rec').onclick = end;
-    const t0 = Date.now(); clearInterval(tick);
-    tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); const el = document.getElementById('tm'); if (!el) return clearInterval(tick); el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); if (s >= maxSec) end(); }, 250);
+    const t0 = Date.now() - from * 1000; clearInterval(tick);
+    const show = () => { const s = Math.floor((Date.now() - t0) / 1000); const el = document.getElementById('tm'); if (!el) return clearInterval(tick); el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); if (s >= maxSec) end(); };
+    show(); tick = setInterval(show, 250);
   };
+  const begin = async () => {
+    voice.stop(); stopMine(); hearBtn.classList.remove('playing'); document.getElementById('didi')?.classList.remove('speaking');
+    voiced = 0;
+    try { await rec.start(level); } catch { return idle('Please allow the microphone and try again'); }
+    listening(0);
+  };
+  const addMore = () => { voice.stop(); stopMine(); if (!rec.more(level)) return begin(); listening(last ? last.dur : 0); };
   const end = async () => {
     clearInterval(tick); const r = await rec.stop();
-    if (!r || r.dur < 1 || r.blob.size < 800) return idle('That was too short. Try again.');
+    if (!r || r.dur < 1 || r.blob.size < 800) { rec.release(); return idle('That was too short. Try again.'); }
+    // Nothing loud enough to be a voice: do not save silence as an answer.
+    if (voiced < 15 && !last) {
+      rec.release(); misses++;
+      const didi = document.getElementById('didi'); didi?.classList.add('speaking');
+      voice.say('nohear', 'I could not hear you. Come closer and say it again.').then(() => didi?.classList.remove('speaking'));
+      return idle(misses > 1 ? 'I still cannot hear you. Hold the phone close and speak up.' : 'I could not hear you. Come closer and try again.');
+    }
     last = r; S.done[card.id] = 'recorded'; save();
-    await queue.add({ id: S.sid + '|' + card.id, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
-    recorded();
+    await queue.add({ id: S.sid + '|' + card.id, rev: ++rev, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
+    // A short answer to a speaking question: Didi asks for more, once, the way a teacher would.
+    const short = speak && !nudged && rec.canAdd && r.dur < Math.max(8, card.target * 2.5);
+    recorded(short);
+    if (short) { nudged = true; const didi = document.getElementById('didi'); didi?.classList.add('speaking'); voice.say('more', 'Very nice! Can you tell me a little more?').then(() => didi?.classList.remove('speaking')); }
   };
   let mine = null;
   const stopMine = () => { if (mine) { mine.pause(); mine = null; } };
-  const recorded = (justNow) => {
+  const recorded = (askMore) => {
     const secs = last ? Math.max(1, last.dur) : 0; const mmss = (n) => Math.floor(n / 60) + ':' + String(Math.floor(n % 60)).padStart(2, '0');
     dock.classList.add('after');
     dock.innerHTML = `<div class="answer">
         <p class="answer-top"><span class="saved"><b>★</b>Saved. Well done!</span></p>
         ${last ? `<button class="playback" id="mine" aria-label="Listen to your answer"><span class="pb-btn" id="pbi">${icon.play}</span><span class="pb-mid"><span class="pb-label" id="pbl">Listen to your answer</span><span class="pb-bar"><i id="pbb"></i></span></span><span class="pb-time" id="pbt">${mmss(secs)}</span></button>` : ''}
-        <div class="answer-acts"><button class="btn quiet" id="again">${icon.redo}Record again</button><button class="btn" id="next">Next</button></div>
+        ${askMore ? `<p class="more-ask">Can you tell me a little more?</p><button class="btn wide" id="addmore">${icon.mic}Say more</button>` : ''}
+        <div class="answer-acts"><button class="btn quiet" id="again">${icon.redo}Record again</button><button class="btn ${askMore ? 'quiet' : ''}" id="next">${askMore ? 'I am finished' : 'Next'}</button>${!askMore && speak && rec.canAdd ? `<button class="link small addlink" id="addmore">Add more to my answer</button>` : ''}</div>
       </div>`;
-    document.getElementById('again').onclick = () => { stopMine(); voice.stop(); dock.classList.remove('after'); idle('Press the red button and answer again'); };
+    document.getElementById('again').onclick = () => { stopMine(); voice.stop(); rec.release(); last = null; dock.classList.remove('after'); idle('Press the red button and answer again'); };
+    document.getElementById('addmore')?.addEventListener('click', addMore);
     document.getElementById('next').onclick = next;
     if (last) {
       const btn = document.getElementById('mine'); const url = URL.createObjectURL(last.blob);
@@ -328,7 +356,7 @@ function run() {
     }
   };
   const next = () => {
-    clearInterval(tick); voice.stop(); stopMine(); S.pos++; save(); scrollTo(0, 0);
+    clearInterval(tick); voice.stop(); stopMine(); rec.release(); document.body.classList.remove('zooming'); document.querySelector('.zoom')?.remove(); S.pos++; save(); scrollTo(0, 0);
     const nx = steps[S.pos];
     if (nx && nx.section !== sec) return cheer(secIdx, nx.section);
     run();

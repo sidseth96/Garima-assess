@@ -10,7 +10,7 @@ const TEACHER_CODE = process.env.TEACHER_CODE || 'didi';
 const sign = (s) => crypto.createHmac('sha256', SECRET).update(s).digest('base64url').slice(0, 24);
 const now = () => Date.now();
 // How Didi says each line: a kind elder sister, never a strict examiner.
-const voiceText = (key, text) => (key === 'done' ? '[excited] [warmly] ' : /^p\d$/.test(key) ? '[happy] [warmly] ' : key === 'greeting' ? '[happy] [warmly] ' : key.startsWith('intro-') ? '[cheerfully] [warmly] ' : '[warmly] [gently] ') + text;
+const voiceText = (key, text) => (key === 'done' ? '[excited] [warmly] ' : /^p\d$/.test(key) ? '[happy] [warmly] ' : key === 'more' ? '[warmly] [curious] ' : key === 'greeting' ? '[happy] [warmly] ' : key.startsWith('intro-') ? '[cheerfully] [warmly] ' : '[warmly] [gently] ') + text;
 
 class Halt extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const need = (cond, status, msg) => { if (!cond) throw new Halt(status, msg); };
