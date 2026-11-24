@@ -81,113 +81,153 @@ function download(rows) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' })); a.download = 'speaking-test-results.csv'; a.click();
 }
 
-// ---------- one child's paper ----------
-const VERDICT = { ok: 'correct', err: 'understood, with errors', unclear: 'not understood', wrong: 'off the point', frag: 'not a full sentence', hindi: 'Hindi, not counted' };
+// ---------- one child's test: first settle Didi's doubts, then read the result ----------
+const VERDICT = { ok: 'Correct', err: 'Has errors', unclear: 'Not understood', wrong: 'Off the point', frag: 'Not a sentence', hindi: 'Hindi' };
+const tone = (r) => (r >= 0.7 ? 'good' : r >= 0.4 ? 'mid' : 'low');
 async function paper(sid) {
   app.innerHTML = top() + '<p class="empty"><span class="spin"></span></p>';
   let D = await call('session', { params: { sid } });
+  const first = () => esc(D.meta.name.split(' ')[0]);
   const audio = (item) => (D.clips[item]?.audio ? `<audio controls preload="none" src="${url('audio', { sid, item, t: token })}"></audio>` : '');
-  const save = async (body) => { const r = await call('review', { body: { sid, ...body } }); D.review = r.review; D.summary = r.summary; return r; };
   let chain = Promise.resolve();
-  const saveBg = (body) => { chain = chain.then(() => call('review', { body: { sid, ...body } })).catch(() => toast('Could not save. Check your connection.')); };
+  const saveBg = (body) => { chain = chain.then(() => call('review', { body: { sid, ...body } })).then((r) => { D.summary = r.summary; }).catch(() => toast('Could not save. Check your connection.')); return chain; };
 
   const unmarked = D.sections.filter((s) => !s.mark).map((s) => s.id);
   if (unmarked.length && D.summary.status !== 'started') {
-    app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking ${esc(D.meta.name)}'s answers</b>This takes a minute or two. Keep this page open.</div>`;
+    app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking ${esc(D.meta.name)}'s answers</b>This takes about a minute. Keep this page open.</div>`;
     await markAll(sid, unmarked); D = await call('session', { params: { sid } });
   }
+  const marked = D.sections.every((s) => s.mark);
+  const R = D.review; R.checks ||= {}; R.cardMarks ||= {};
+  const qOf = (id) => D.sections.flatMap((s) => s.cards).find((c) => c.id === id);
 
-  function draw() {
-    const s = D.summary; const locked = !!D.review.signedOff; const t = D.tally;
-    // What to spot-check: the child's voice, anything the AI was unsure it heard, and the answer with the most marks at stake.
-    const checks = [];
+  // The few things only a person can settle.
+  const checks = [];
+  if (marked && !D.meta.sample) {
+    const v = ['a1', 'b1', 'c2', 'd1', 'a4'].find((id) => D.clips[id]?.text) || Object.keys(D.clips).find((id) => D.clips[id]?.audio);
+    if (v) checks.push({ id: 'voice', type: 'voice', clip: v });
     for (const sec of D.sections) {
-      if (!sec.mark) continue;
-      if (sec.mark.kind === 'blanks') for (const it of sec.mark.items) if (it.blanks.some((b) => b.doubt) && D.clips[it.id]) checks.push({ id: it.id, why: 'Didi was not sure what she heard', q: it.text.replace(/ \(X\)/g, ''), heard: D.clips[it.id].text, ai: it.blanks.map((b) => `${b.said || 'nothing'} ${b.ok ? '✓' : '✗'}`).join(',  ') });
-      if (sec.mark.kind === 'speak') for (const c of sec.mark.cards) if (c.sentences.some((x) => x.doubt) && D.clips[c.id]) checks.push({ id: c.id, why: 'Some words were hard to hear', q: sec.cards.find((x) => x.id === c.id).say, heard: D.clips[c.id].text, ai: `${c.n.ok} correct, ${c.n.err} with errors, ${c.n.unclear + c.n.wrong} not counted` });
+      if (sec.mark.kind === 'blanks') for (const it of sec.mark.items) it.blanks.forEach((bl, i) => { if (bl.doubt && D.clips[it.id]?.audio) checks.push({ id: it.id + ':' + i, type: 'blank', clip: it.id, it, i, bl }); });
+      else for (const c of sec.mark.cards) if (c.sentences.some((x) => x.doubt) && D.clips[c.id]?.audio) checks.push({ id: c.id, type: 'speak', why: 'Some words were hard to hear', c });
     }
-    const big = D.sections.filter((x) => x.mark?.kind === 'speak').flatMap((sec) => sec.mark.cards.map((c) => ({ sec, c }))).filter((x) => x.c.counted && D.clips[x.c.id] && !checks.some((k) => k.id === x.c.id)).sort((a, b) => b.c.marks - a.c.marks)[0];
-    if (big) checks.push({ id: big.c.id, why: 'The answer with the most marks', q: big.sec.cards.find((x) => x.id === big.c.id).say, heard: D.clips[big.c.id].text, ai: `${big.c.n.ok} correct, ${big.c.n.err} with errors, ${big.c.n.unclear + big.c.n.wrong} not counted` });
-    const voiceClip = ['a1', 'a2', 'a3', 'b1', 'c1'].find((id) => D.clips[id]) || Object.keys(D.clips)[0];
-    const state = D.review.checks || {};
+    const sample = D.sections.filter((x) => x.mark.kind === 'speak').flatMap((x) => x.mark.cards).filter((c) => c.counted && D.clips[c.id]?.audio && !checks.some((k) => k.id === c.id)).sort((x, y) => y.raw - x.raw)[0];
+    if (sample) checks.push({ id: sample.id, type: 'speak', why: 'One answer picked for a spot check', c: sample });
+  }
+  const answered = (k) => (k.type === 'voice' ? typeof R.voiceOk === 'boolean' : k.type === 'blank' ? !!R.checks[k.id] : R.checks[k.id] === 'ok' || (R.checks[k.id] === 'wrong' && typeof R.cardMarks[k.id] === 'number'));
+  const left = () => checks.filter((k) => !answered(k)).length;
+  let showChecks = left() > 0;
 
-    app.innerHTML = `${top()}
-      <a class="back" href="#">${chev.replace('class="chev"', 'class="chev" style="transform:rotate(90deg)"')} Class register</a>
-      <div class="paper-head"><div><h1>${esc(D.meta.name)}</h1><p class="soft">${[D.meta.cls && 'Class ' + esc(D.meta.cls), esc(D.meta.school), 'Speaking test', day(D.meta.startedAt)].filter(Boolean).join(', ')}</p>
-        <p style="margin-top:.5rem"><span class="status ${s.status}">${STATUS[s.status]}</span>${D.meta.sample ? ' <span class="small soft">Taken from a recorded call, so there are no clips to play.</span>' : ''}</p></div>
-        ${s.total != null ? `<div class="grade" id="grade">${num(s.total)}<small>/100</small></div>` : `<div class="grade none">${s.clips} of ${s.units}<br>answers in</div>`}</div>
-      <div class="strip">${D.sections.map((sec) => { const sc = s.scores[sec.id]; const changed = sc.ai != null && sc.final !== sc.ai; return `<div><label for="m-${sec.id}">${esc(sec.title)}</label><span class="val"><input id="m-${sec.id}" data-sec="${sec.id}" type="number" inputmode="decimal" step="0.5" min="0" max="${sec.marks}" value="${sc.final ?? ''}" ${locked ? 'disabled' : ''}><span class="of">/${sec.marks}</span></span><span class="was">${changed ? `Didi gave ${num(sc.ai)}` : '&nbsp;'}</span></div>`; }).join('')}</div>
+  const sentenceList = (c) => `<ul class="t-sent">${c.sentences.map((x) => `<li class="${x.v}"><span class="t-tag">${VERDICT[x.v]}</span><span><span class="t-said">${esc(x.t)}</span>${x.doubt ? ' <span class="dbt">hard to hear</span>' : ''}${x.v === 'err' && x.fix ? `<span class="t-fix">Should be: ${esc(x.fix)}</span>` : ''}</span></li>`).join('')}</ul>`;
 
-      <div class="cols"><aside>
-        <section class="panel"><h2>Your check</h2><p class="soft">Didi has marked every answer. Listen to these few, then sign off.</p>
-          ${voiceClip && !D.meta.sample ? `<div class="check"><h3>Is this ${esc(D.meta.name.split(' ')[0])}'s own voice?</h3>${audio(voiceClip)}
-            <div class="yn"><button class="yes ${D.review.voiceOk === true ? 'on' : ''}" data-voice="1" ${locked ? 'disabled' : ''}>Yes, it is</button><button class="no ${D.review.voiceOk === false ? 'on' : ''}" data-voice="0" ${locked ? 'disabled' : ''}>No</button></div></div>` : D.meta.sample ? '' : '<p class="nothing">No recordings have arrived yet.</p>'}
-          ${checks.slice(0, 3).map((c) => `<div class="check"><h3>${esc(c.why)}</h3><p class="q">${esc(c.q)}</p>${audio(c.id)}<p class="heard">${esc(c.heard || '')}</p><p class="q">Didi marked: ${esc(c.ai)}</p>
-            <div class="yn"><button class="yes ${state[c.id] === 'ok' ? 'on' : ''}" data-check="${c.id}" data-v="ok" ${locked ? 'disabled' : ''}>Marked right</button><button class="no ${state[c.id] === 'wrong' ? 'on' : ''}" data-check="${c.id}" data-v="wrong" ${locked ? 'disabled' : ''}>Marked wrong</button></div>
-            ${state[c.id] === 'wrong' ? '<p class="small err fixhint">Change the mark for this part in the row at the top.</p>' : ''}</div>`).join('')}
+  // ----- step 1: checks -----
+  function drawChecks() {
+    const body = checks.map((k, n) => {
+      const done = answered(k); let inner = '';
+      if (k.type === 'voice') inner = `<h2>Is this ${first()}'s own voice?</h2><p class="t-help">Listen for a few seconds. Say no if an adult or another child is answering.</p>${audio(k.clip)}
+        <div class="t-choice"><button class="${R.voiceOk === true ? 'on yes' : ''}" data-k="${k.id}" data-v="ok">Yes, it is ${first()}</button><button class="${R.voiceOk === false ? 'on no' : ''}" data-k="${k.id}" data-v="wrong">No</button></div>`;
+      if (k.type === 'blank') {
+        let i = 0; const sentence = esc(k.it.text).replace(/ \(X\)/g, '').replace(/___/g, () => (i++ === k.i ? '<mark>?</mark>' : '<u>' + esc(k.it.blanks[i - 1].said || '…') + '</u>'));
+        inner = `<h2>Did ${first()} get the highlighted word right?</h2><p class="t-help">Didi could not hear this word clearly.</p><p class="t-sentence">${sentence}</p>${audio(k.clip)}
+          <dl class="t-facts"><div><dt>Didi heard</dt><dd>${esc(D.clips[k.clip].text || 'nothing')}</dd></div><div><dt>Right answer</dt><dd>${esc(k.bl.accepted.join(' or '))}${/spell/i.test(D.sections.flatMap((s) => s.cards).find((c) => c.id === k.it.id)?.text || '') ? '' : ''}</dd></div></dl>
+          <div class="t-choice"><button class="${R.checks[k.id] === 'ok' ? 'on yes' : ''}" data-k="${k.id}" data-v="ok">${first()} got it right</button><button class="${R.checks[k.id] === 'wrong' ? 'on no' : ''}" data-k="${k.id}" data-v="wrong">${first()} got it wrong</button></div>`;
+      }
+      if (k.type === 'speak') {
+        const c = k.c;
+        inner = `<h2>Has Didi marked this answer fairly?</h2><p class="t-help">${esc(k.why)}. Listen, then compare with what Didi heard.</p><p class="t-q">${esc(qOf(c.id).say)}</p>${audio(c.id)}${sentenceList(c)}
+          <div class="t-choice"><button class="${R.checks[k.id] === 'ok' ? 'on yes' : ''}" data-k="${k.id}" data-v="ok">Yes, that is fair</button><button class="${R.checks[k.id] === 'wrong' ? 'on no' : ''}" data-k="${k.id}" data-v="wrong">No, I will mark it</button></div>
+          <label class="t-own" ${R.checks[k.id] === 'wrong' ? '' : 'hidden'}>Your mark for this answer <input type="number" inputmode="decimal" step="0.5" min="0" max="${c.marks}" data-own="${k.id}" value="${R.cardMarks[k.id] ?? ''}"> out of ${num(c.marks)}</label>`;
+      }
+      return `<section class="t-card t-check ${done ? 'done' : ''}" id="k-${n}"><p class="t-step">${done ? 'Done' : `Check ${n + 1} of ${checks.length}`}</p>${inner}</section>`;
+    }).join('');
+    app.innerHTML = `${top()}<a class="back" href="#">${chev.replace('class="chev"', 'class="chev" style="transform:rotate(90deg)"')} Class register</a>
+      <div class="t-narrow"><header class="t-head"><div><h1>${esc(D.meta.name)}</h1><p class="soft">${[D.meta.cls && 'Class ' + esc(D.meta.cls), esc(D.meta.school), day(D.meta.startedAt)].filter(Boolean).join(', ')}</p></div></header>
+      <div class="t-intro"><b>Didi has marked this test and needs your help with ${checks.length} ${checks.length === 1 ? 'thing' : 'things'}.</b> The result appears once you have answered them.</div>
+      ${body}
+      <div class="t-bar"><span id="leftn"></span><button class="btn" id="reveal">See the result</button></div></div>`;
+    const sync = () => { const n = left(); document.getElementById('leftn').textContent = n ? `${checks.length - n} of ${checks.length} answered` : 'All answered'; document.getElementById('reveal').disabled = n > 0; checks.forEach((k, i) => { const el = document.getElementById('k-' + i); el.classList.toggle('done', answered(k)); el.querySelector('.t-step').textContent = answered(k) ? 'Done' : `Check ${i + 1} of ${checks.length}`; }); };
+    app.querySelectorAll('.t-choice button').forEach((btn) => { btn.onclick = () => {
+      const k = checks.find((x) => x.id === btn.dataset.k); const v = btn.dataset.v;
+      btn.parentElement.querySelectorAll('button').forEach((x) => { x.className = x === btn ? 'on ' + (v === 'ok' ? 'yes' : 'no') : ''; });
+      if (k.type === 'voice') { R.voiceOk = v === 'ok'; saveBg({ voiceOk: R.voiceOk }); }
+      else { R.checks[k.id] = v; saveBg({ checks: { [k.id]: v } }); const own = btn.closest('.t-check').querySelector('.t-own'); if (own) { own.hidden = v !== 'wrong'; if (v === 'wrong') own.querySelector('input').focus(); } }
+      sync();
+    }; });
+    app.querySelectorAll('[data-own]').forEach((inp) => { inp.oninput = () => { const v = inp.value === '' ? null : Number(inp.value); if (v == null || Number.isNaN(v) || v < 0 || v > Number(inp.max)) delete R.cardMarks[inp.dataset.own]; else R.cardMarks[inp.dataset.own] = v; sync(); }; inp.onchange = () => saveBg({ cardMarks: { [inp.dataset.own]: R.cardMarks[inp.dataset.own] ?? null } }); });
+    document.getElementById('reveal').onclick = async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await chain; D = await call('session', { params: { sid } }); Object.assign(R, D.review); D.review = R; showChecks = false; scrollTo(0, 0); drawReport(); };
+    sync();
+  }
+
+  // ----- step 2: the result -----
+  function drawReport() {
+    const s = D.summary; const locked = !!R.signedOff; const t = D.tally; const cm = D.comment || {};
+    const counted = Math.max(1, t.sentences); const pc = (n) => Math.round((n / counted) * 100);
+    app.innerHTML = `${top()}<a class="back" href="#">${chev.replace('class="chev"', 'class="chev" style="transform:rotate(90deg)"')} Class register</a>
+      <header class="t-head"><div><h1>${esc(D.meta.name)}</h1><p class="soft">${[D.meta.cls && 'Class ' + esc(D.meta.cls), esc(D.meta.school), 'Speaking test', day(D.meta.startedAt)].filter(Boolean).join(', ')}</p>
+          <p class="t-status"><span class="status ${s.status}">${STATUS[s.status]}</span>${D.meta.sample ? '<span class="small soft">From a recorded call. No clips to play.</span>' : ''}${checks.length ? `<button class="link small" id="recheck">${checks.length} checks answered. See them again</button>` : ''}</p></div>
+        ${s.total != null ? `<div class="t-total"><b id="total">${num(s.total)}</b><span>out of 100</span></div>` : `<div class="t-total none"><b>${s.clips} of ${s.units}</b><span>answers received</span></div>`}</header>
+      ${R.voiceOk === false ? '<div class="t-warn">You said this is not the child\'s own voice. This result should not be used until the child takes the test again.</div>' : ''}
+      ${!marked ? '<div class="t-warn">Didi could not finish marking this test. Use "Mark again with Didi" at the bottom of the page.</div>' : ''}
+
+      <div class="t-grid">
+        <section class="t-card"><div class="t-cardhead"><h2>Marks</h2>${locked || !marked ? '' : '<button class="link small" id="editmarks">Change marks</button>'}</div>
+          <div class="t-marks" id="marks">${D.sections.map((sec) => { const sc = s.scores[sec.id]; const f = sc.final ?? 0; return `<div class="t-mark ${tone(f / sec.marks)}"><span class="t-name">${esc(sec.title)}</span><span class="t-track"><i style="width:${Math.round((f / sec.marks) * 100)}%"></i></span><span class="t-num"><b data-val="${sec.id}">${sc.final == null ? '–' : num(sc.final)}</b><input hidden type="number" inputmode="decimal" step="0.5" min="0" max="${sec.marks}" data-sec="${sec.id}" value="${sc.final ?? ''}"> / ${sec.marks}</span>${sc.ai != null && sc.final !== sc.ai ? `<span class="t-was">Didi gave ${num(sc.ai)}</span>` : ''}</div>`; }).join('')}</div>
         </section>
-        <section class="panel"><h2>Comments</h2>
-          ${s.total != null ? `<div class="tally"><div><b>${t.sentences}</b><span>English sentences</span></div><div class="g"><b>${t.ok}</b><span>fully correct</span></div><div><b>${t.err}</b><span>understood, with errors</span></div><div class="r"><b>${t.unclear + t.wrong}</b><span>not understood</span></div></div>` : ''}
-          <textarea class="comment" id="comment" ${locked ? 'disabled' : ''} placeholder="Comments appear here once the test is marked.">${esc(s.comment || '')}</textarea>
-          <div class="signoff">${locked ? `<span class="status checked">Checked on ${day(D.review.signedOffAt)}</span><span class="tools"><button class="btn quiet small" id="undo">Reopen</button><button class="btn small" id="mail1">Email result</button></span>`
-            : `<span class="small soft">${D.review.voiceOk ? 'Ready to sign off.' : 'Confirm the voice first.'}</span><button class="btn" id="sign" ${D.review.voiceOk && s.total != null ? '' : 'disabled'}>Sign off</button>`}</div>
-        </section></aside>
+        <section class="t-card"><h2>How ${first()} spoke</h2>
+          ${marked ? `<p class="t-big"><b>${t.sentences}</b> English ${t.sentences === 1 ? 'sentence' : 'sentences'} in the speaking parts</p>
+          <div class="t-stack" role="img" aria-label="${t.ok} correct, ${t.err} with errors, ${t.unclear + t.wrong} not understood"><i class="g" style="flex:${t.ok}"></i><i class="a" style="flex:${t.err}"></i><i class="r" style="flex:${t.unclear + t.wrong}"></i>${t.sentences ? '' : '<i class="n" style="flex:1"></i>'}</div>
+          <ul class="t-legend"><li class="g"><b>${t.ok}</b> fully correct <span>${pc(t.ok)}%</span></li><li class="a"><b>${t.err}</b> understood, with errors <span>${pc(t.err)}%</span></li><li class="r"><b>${t.unclear + t.wrong}</b> not understood <span>${pc(t.unclear + t.wrong)}%</span></li></ul>
+          ${t.hindi ? `<p class="small soft">${t.hindi} in Hindi, not counted.</p>` : ''}` : '<p class="soft">Not marked yet.</p>'}
+        </section>
+      </div>
 
-        <div>${D.sections.map((sec, i) => `<details class="panel sec" ${i === 0 ? 'open' : ''}><summary><h2>${esc(sec.title)}</h2><span style="display:flex;align-items:center;gap:.75rem"><span class="sc">${sec.mark ? `${num(sec.mark.score)}/${sec.marks}` : ''}</span>${chev}</span></summary>${sectionHTML(sec)}</details>`).join('')}
-          <p style="margin-top:1.25rem;display:flex;gap:1.25rem;flex-wrap:wrap"><button class="link small" id="remark">Mark again with Didi</button><button class="link small" id="archive" style="color:var(--red)">Remove this test</button></p></div>
-      </div>`;
+      <section class="t-card"><h2>Summary</h2>
+        ${cm.summary ? `<p class="t-lead">${esc(cm.summary)}</p>` : ''}
+        ${cm.strengths?.length || cm.workOn?.length ? `<div class="t-three">
+          <div><h3 class="g">Does well</h3><ul>${(cm.strengths || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+          <div><h3 class="r">Needs work</h3><ul>${(cm.workOn || []).map((w) => `<li><b>${esc(w.area)}</b>${w.examples.length ? `<span class="t-eg">${w.examples.map((e) => '“' + esc(e) + '”').join('  ')}</span>` : ''}</li>`).join('')}</ul></div>
+          <div><h3>Practise next</h3><ul>${(cm.revise || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></div>` : cm.comment ? `<p>${esc(cm.comment)}</p>${cm.revise?.length ? `<p class="soft">Practise next: ${esc(cm.revise.join('; '))}</p>` : ''}` : '<p class="soft">The summary appears once the test is marked.</p>'}
+        <details class="t-note"><summary>Edit the comment that goes in the email and spreadsheet</summary><textarea id="comment" rows="6" ${locked ? 'disabled' : ''}>${esc(s.comment || '')}</textarea></details>
+        <div class="t-sign">${locked ? `<span class="status checked">Signed off on ${day(R.signedOffAt)}</span><span class="tools"><button class="btn quiet small" id="undo">Reopen</button><button class="btn small" id="mail1">Email result</button></span>`
+          : `<span class="small soft">Signing off marks this result as checked by you.</span><button class="btn" id="sign" ${marked && R.voiceOk !== false ? '' : 'disabled'}>Sign off</button>`}</div>
+      </section>
+
+      <h2 class="t-sub">Every answer</h2>
+      ${D.sections.map((sec) => `<details class="t-card t-sec"><summary><span>${esc(sec.title)}</span><span class="t-secnum">${sec.mark ? `${num(s.scores[sec.id].final)} / ${sec.marks}` : 'not marked'}${chev}</span></summary>${sectionHTML(sec)}</details>`).join('')}
+      <p class="t-foot"><button class="link small" id="remark">Mark again with Didi</button><button class="link small" id="archive" style="color:var(--red)">Remove this test</button></p>`;
 
     function sectionHTML(sec) {
       const m = sec.mark;
-      if (!m) return `<p class="nothing" style="margin-top:1rem">Didi has not marked this part yet. You can still listen to each answer and read what was heard.</p>` + sec.cards.map((c, n) => { const clip = D.clips[c.id]; return `<div class="card-m"><p class="q">${esc(c.say || (n + 1) + '. ' + (c.text || '').replace(/ \(X\)/g, ''))}</p>${clip ? audio(c.id) + `<p class="check"><span class="heard">${esc(clip.text || (clip.failed ? 'Could not be turned into text.' : 'Nothing was heard.'))}</span></p>` : '<p class="nothing">No answer recorded.</p>'}</div>`; }).join('');
+      if (!m) return sec.cards.map((c, n) => { const clip = D.clips[c.id]; return `<div class="t-ans"><p class="t-q">${esc(c.say || (n + 1) + '. ' + (c.text || '').replace(/ \(X\)/g, ''))}</p>${clip ? audio(c.id) + `<p class="t-said">${esc(clip.text || 'Nothing was heard.')}</p>` : '<p class="soft">No answer recorded.</p>'}</div>`; }).join('');
       if (m.kind === 'speak') return m.cards.map((c) => {
-        const q = sec.cards.find((x) => x.id === c.id); const clip = D.clips[c.id];
-        return `<div class="card-m"><p class="q">${esc(q.say)}</p>
-          <p class="line">${clip ? `${c.counted} ${c.counted === 1 ? 'sentence' : 'sentences'} in English (asked for ${c.target}): ${c.n.ok} correct, ${c.n.err} with errors, ${c.n.unclear + c.n.wrong} not understood${c.n.hindi ? `. ${c.n.hindi} in Hindi, not counted` : ''}. Worth ${num(Math.round(c.raw * 100) / 100)} of ${num(c.marks)}.` : 'No answer recorded.'}</p>
-          ${clip ? audio(c.id) : ''}
-          ${c.sentences.length ? `<ol class="work">${c.sentences.map((x) => `<li class="${x.v}"><span class="t">${esc(x.t)}</span>${x.v !== 'ok' && x.v !== 'err' ? `<span class="why">${VERDICT[x.v]}</span>` : ''}${x.doubt ? '<span class="dbt">hard to hear</span>' : ''}${x.v === 'err' && x.fix ? `<span class="fix">${esc(x.fix)}<span class="why">${(x.tags || []).map((g) => (D.errorTypes[g] || g).split(' (')[0]).join(', ')}</span></span>` : ''}</li>`).join('')}</ol>` : clip ? `<p class="nothing" style="margin-top:.5rem">${clip.failed ? 'This recording could not be turned into text. Listen and mark it yourself.' : 'Nothing was said in English.'}</p>` : ''}</div>`;
+        const clip = D.clips[c.id]; const own = R.checks[c.id] === 'wrong' && typeof R.cardMarks[c.id] === 'number';
+        return `<div class="t-ans"><p class="t-q">${esc(qOf(c.id).say)}</p>
+          <p class="t-line">${clip ? `${c.counted} of the ${c.target} sentences asked for. ${c.n.ok} correct, ${c.n.err} with errors, ${c.n.unclear + c.n.wrong} not understood. ${own ? `You gave ${num(R.cardMarks[c.id])}` : `Worth ${num(Math.round(c.raw * 100) / 100)}`} of ${num(c.marks)}.` : 'No answer recorded.'}</p>
+          ${clip ? audio(c.id) : ''}${c.sentences.length ? sentenceList(c) : clip ? `<p class="soft">${clip.failed ? 'This recording could not be turned into text. Listen and mark it yourself.' : 'Nothing was said in English.'}</p>` : ''}</div>`;
       }).join('');
       return m.items.map((it, n) => {
         let i = 0; const clip = D.clips[it.id];
-        const filled = esc(it.text).replace(/ \(X\)/g, '').replace(/___/g, () => { const b = it.blanks[i++]; return `<em class="${b.ok ? 'ok' : 'no'}">${esc(b.said || 'no answer')}</em>${!b.ok ? ` <small>${esc(b.accepted.join(' / '))}</small>` : ''}${b.doubt ? '<span class="dbt" style="font-family:var(--text)">hard to hear</span>' : ''}`; });
-        return `<div class="card-m"><p class="filled">${n + 1}. ${filled}</p>${clip ? audio(it.id) : '<p class="nothing">No answer recorded.</p>'}</div>`;
+        const filled = esc(it.text).replace(/ \(X\)/g, '').replace(/___/g, () => { const idx = i++; const b = it.blanks[idx]; const ck = R.checks[it.id + ':' + idx]; const ok = ck ? ck === 'ok' : b.ok; return `<em class="${ok ? 'ok' : 'no'}">${esc(b.said || 'no answer')}</em>${!ok ? `<small>answer: ${esc(b.accepted.join(' or '))}</small>` : ''}${ck ? '<small class="you">your call</small>' : b.offkey && ok ? '<small class="you">not in the answer key</small>' : ''}`; });
+        return `<div class="t-ans"><p class="t-filled">${n + 1}. ${filled}</p>${clip ? audio(it.id) : D.meta.sample ? '' : '<p class="soft">No answer recorded.</p>'}</div>`;
       }).join('');
     }
 
-    // --- actions ---
-    // These respond at once on screen; saving happens quietly behind.
-    app.querySelectorAll('.strip input').forEach((inp) => { inp.onchange = () => {
+    document.getElementById('recheck')?.addEventListener('click', () => { showChecks = true; scrollTo(0, 0); drawChecks(); });
+    document.getElementById('editmarks')?.addEventListener('click', (e) => { app.querySelectorAll('#marks input').forEach((x) => { x.hidden = false; }); app.querySelectorAll('#marks [data-val]').forEach((x) => { x.hidden = true; }); e.target.remove(); });
+    app.querySelectorAll('#marks input').forEach((inp) => { inp.onchange = () => {
       const sec = D.sections.find((x) => x.id === inp.dataset.sec); const sc = D.summary.scores[sec.id];
-      let v = inp.value === '' ? null : Math.max(0, Math.min(sec.marks, Math.round(Number(inp.value) * 2) / 2));
-      if (Number.isNaN(v)) v = null;
-      sc.final = v ?? sc.ai; inp.value = sc.final ?? '';
-      inp.closest('div').querySelector('.was').innerHTML = sc.ai != null && sc.final !== sc.ai ? `Didi gave ${num(sc.ai)}` : '&nbsp;';
-      const all = Object.values(D.summary.scores); const g = document.getElementById('grade');
-      if (g && all.every((x) => x.final != null)) { D.summary.total = all.reduce((t, x) => t + x.final, 0); g.innerHTML = `${num(D.summary.total)}<small>/100</small>`; }
+      let v = inp.value === '' ? null : Math.max(0, Math.min(sec.marks, Math.round(Number(inp.value) * 2) / 2)); if (Number.isNaN(v)) v = null;
+      if (v != null) { sc.final = v; inp.value = v; const row = inp.closest('.t-mark'); row.className = 't-mark ' + tone(v / sec.marks); row.querySelector('i').style.width = Math.round((v / sec.marks) * 100) + '%'; }
+      const all = Object.values(D.summary.scores); if (all.every((x) => x.final != null)) { D.summary.total = all.reduce((a, x) => a + x.final, 0); document.getElementById('total').textContent = num(D.summary.total); }
       saveBg({ scores: { [sec.id]: v } }); toast('Mark saved');
     }; });
-    const readySign = () => { const b = document.getElementById('sign'); if (!b) return; b.disabled = !(D.review.voiceOk && D.summary.total != null); b.previousElementSibling.textContent = D.review.voiceOk ? 'Ready to sign off.' : 'Confirm the voice first.'; };
-    app.querySelectorAll('[data-voice]').forEach((b) => { b.onclick = () => {
-      D.review.voiceOk = b.dataset.voice === '1';
-      app.querySelectorAll('[data-voice]').forEach((x) => x.classList.toggle('on', x === b));
-      readySign(); saveBg({ voiceOk: D.review.voiceOk });
-    }; });
-    app.querySelectorAll('[data-check]').forEach((b) => { b.onclick = () => {
-      const id = b.dataset.check; D.review.checks = { ...(D.review.checks || {}), [id]: b.dataset.v };
-      app.querySelectorAll(`[data-check="${id}"]`).forEach((x) => x.classList.toggle('on', x === b));
-      const box = b.closest('.check'); box.querySelector('.fixhint')?.remove();
-      if (b.dataset.v === 'wrong') box.insertAdjacentHTML('beforeend', '<p class="small err fixhint">Change the mark for this part in the row at the top.</p>');
-      saveBg({ checks: { [id]: b.dataset.v } });
-    }; });
-    const cm = document.getElementById('comment'); cm.onchange = () => { saveBg({ comment: cm.value }); toast('Comment saved'); };
-    const grow = () => { cm.style.height = 'auto'; cm.style.height = cm.scrollHeight + 4 + 'px'; }; cm.oninput = grow; grow();
-    document.getElementById('sign')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await chain; await save({ signedOff: true, comment: cm.value }); toast('Signed off'); draw(); });
-    document.getElementById('undo')?.addEventListener('click', async () => { await save({ signedOff: false }); draw(); });
+    const cmt = document.getElementById('comment'); cmt.onchange = () => { saveBg({ comment: cmt.value }); toast('Comment saved'); };
+    document.getElementById('sign')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await saveBg({ signedOff: true }); R.signedOff = true; R.signedOffAt = Date.now(); D.summary.status = 'checked'; toast('Signed off'); drawReport(); });
+    document.getElementById('undo')?.addEventListener('click', async () => { await saveBg({ signedOff: false }); R.signedOff = false; D.summary.status = 'marked'; drawReport(); });
     document.getElementById('mail1')?.addEventListener('click', () => email([D.summary]));
-    document.getElementById('remark').onclick = async () => { if (!confirm("Mark this test again? Didi's marks and comment will be replaced. Marks you changed yourself stay.")) return; app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking again</b>This takes a minute or two.</div>`; await markAll(sid, D.sections.map((x) => x.id), true); paper(sid); };
-    document.getElementById('archive').onclick = async () => { if (!confirm('Remove this test from the register?')) return; await save({ archived: true }); location.hash = ''; };
+    document.getElementById('remark').onclick = async () => { if (!confirm("Mark this test again? Didi's marks and summary will be replaced. Your own answers to the checks stay.")) return; app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking again</b>This takes about a minute.</div>`; await markAll(sid, D.sections.map((x) => x.id), true); paper(sid); };
+    document.getElementById('archive').onclick = async () => { if (!confirm('Remove this test from the register?')) return; await saveBg({ archived: true }); location.hash = ''; };
   }
-  draw();
+  (showChecks ? drawChecks : drawReport)();
 }
 
 function route() {

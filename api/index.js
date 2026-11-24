@@ -62,12 +62,22 @@ async function loadSession(sid) {
   return { sid, meta, a, us, clips, marks, comment, review: review || {} };
 }
 
+// Didi's mark for a part, after the teacher's answers to her doubts are applied.
+function adjusted(sec, m, review) {
+  if (!m) return null;
+  const ck = review.checks || {};
+  if (m.kind === 'blanks') { let n = 0; for (const it of m.items) it.blanks.forEach((b, i) => { const c = ck[it.id + ':' + i]; if (c ? c === 'ok' : b.ok) n++; }); return n; }
+  const cm = review.cardMarks || {}; let t = 0;
+  for (const c of m.cards) t += ck[c.id] === 'wrong' && typeof cm[c.id] === 'number' ? Math.min(c.marks, cm[c.id]) : c.raw;
+  return Math.min(sec.marks, Math.round(t * 2) / 2);
+}
+
 function summarise(S) {
   const { a, meta, marks, review, clips, us } = S;
   const scores = {}; let total = 0; let marked = 0;
   for (const s of a.sections) {
     const ai = marks[s.id]?.score;
-    const final = review.scores?.[s.id] ?? ai ?? null;
+    const final = review.scores?.[s.id] ?? adjusted(s, marks[s.id], review) ?? null;
     scores[s.id] = { ai: ai ?? null, final };
     if (ai != null) marked++;
     if (final != null) total += final;
@@ -298,6 +308,7 @@ const ops = {
     if (typeof b.comment === 'string') r.comment = b.comment.slice(0, 3000);
     if (typeof b.voiceOk === 'boolean') r.voiceOk = b.voiceOk;
     if (b.checks) r.checks = { ...(r.checks || {}), ...b.checks };
+    if (b.cardMarks) { r.cardMarks = { ...(r.cardMarks || {}) }; for (const [k, v] of Object.entries(b.cardMarks)) { if (typeof v === 'number' && v >= 0 && v <= 20) r.cardMarks[k] = Math.round(v * 2) / 2; else delete r.cardMarks[k]; } }
     if (typeof b.signedOff === 'boolean') { r.signedOff = b.signedOff; r.signedOffAt = b.signedOff ? now() : null; }
     if (typeof b.archived === 'boolean') r.archived = b.archived;
     await store.put(`${dir(S.sid)}review-${now()}.json`, r);

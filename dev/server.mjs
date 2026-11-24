@@ -6,7 +6,7 @@ process.env.MOCK_AI = process.env.MOCK_AI ?? '1';
 const { default: handler } = await import('../api/index.js');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg', '.json': 'application/json' };
 globalThis.__mockMark = (system, user) => {
-  if (user.includes('"comment"')) return { comment: 'Speaks with confidence and says a lot about herself and her family. Work on 3rd person verbs: She like to play, My mother name. Present continuous: She wearing, He talking.', revise: ['3rd person verbs with he / she', 'Present continuous with is / are'] };
+  if (user.includes('"summary"')) return { summary: 'Speaks with confidence and says a lot, but drops small grammar words in most answers.', strengths: ['Confident, full sentences about herself and her family', 'Strong in fill in the blanks'], work_on: [{ area: '3rd person verbs', examples: ['She like to play', 'My mother name'] }, { area: 'Present continuous with is / are', examples: ['She wearing brown boots', 'He talking'] }], revise: ['3rd person verbs with he / she', 'Present continuous with is / are'] };
   const mk = user.includes('ITEMS\n') ? user.indexOf('ITEMS\n') : user.indexOf('CARDS\n');
   const data = JSON.parse(user.slice(user.indexOf('[', mk), user.indexOf('\n\nReturn')));
   if (user.includes('ITEMS\n')) return { items: data.map((it) => ({ id: it.id, blanks: it.accepted_answers_per_blank.map((acc, i) => ({ said: it.transcript ? (i % 4 === 3 ? 'wear' : acc[0]) : '', ok: !!it.transcript && i % 4 !== 3, doubt: i % 5 === 4 })) })) };
