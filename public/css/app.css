@@ -566,3 +566,5 @@ body.zooming .topbar, body.zooming .trail, body.zooming .where, body.zooming .st
 body.zooming .dock { background: linear-gradient(180deg, rgba(14, 21, 51, 0), #0E1533 2.25rem); }
 body.zooming .dock-say { color: #fff; } body.zooming .dock-say.live { color: #FFB4AE; }
 body.zooming .dock .link { color: #fff; }
+
+.gap-text .count { width: 1.75rem; left: -2.05rem; font-size: .9375rem; }

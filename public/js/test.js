@@ -261,7 +261,7 @@ function run() {
       <div class="page">
         <div class="didi" id="didi">${DIDI}<button class="hear" id="hear">${icon.ear}<span>Hear it again</span></button></div>
         ${speak ? `<p class="ask ${wordsHidden ? 'hidden-words' : ''}" id="ask">${wordsHidden ? 'Listen to Didi, then answer.' : esc(card.say)}</p>`
-          : `<p class="gap-text"><span class="count">${k + 1}</span>${gapHTML()}</p>${card.extra ? `<p class="soft" style="line-height:var(--line)">${esc(card.extra)}</p>` : ''}`}
+          : `<p class="gap-text"><span class="count">${esc(card.id.slice(1))}</span>${gapHTML()}</p>${card.extra ? `<p class="soft" style="line-height:var(--line)">${esc(card.extra)}</p>` : ''}`}
         <div class="help">${wordsHidden ? '<button class="link" id="words">Show the words</button>' : ''}<button class="link hi" id="hindi">हिंदी में</button></div>
         <p class="hindi-line hi" id="hl" hidden>${esc(speak ? card.hi : sec.hi)}</p>
       </div>
@@ -289,9 +289,10 @@ function run() {
   const dock = document.getElementById('dock'); const maxSec = speak ? 150 : 60; let tick = 0; let last = null;
   const idle = (msg) => {
     dock.classList.remove('after');
-    dock.innerHTML = `<p class="dock-say">${msg || 'Press the red button and speak'}</p><span class="left"></span><button class="rec" id="rec" aria-label="Start recording">${icon.mic}</button><span class="right"><button class="link small" id="skip">I don't know</button></span>`;
+    dock.innerHTML = `<p class="dock-say">${msg || (speak ? 'Press the red button and speak' : 'Press the red button and say the sentence')}</p><span class="left">${!speak && k > 0 ? `<button class="link small" id="back">Back</button>` : ''}</span><button class="rec" id="rec" aria-label="Start recording">${icon.mic}</button><span class="right"><button class="link small" id="skip">I don't know</button></span>`;
     document.getElementById('rec').onclick = begin;
     document.getElementById('skip').onclick = () => { voice.stop(); S.done[card.id] = 'skipped'; next(); };
+    document.getElementById('back')?.addEventListener('click', () => { voice.stop(); rec.release(); S.pos--; save(); run(); });
   };
   let voiced = 0, misses = 0, nudged = false, rev = 0;
   const level = (l) => { if (l > 0.12) voiced++; const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); };
@@ -323,6 +324,11 @@ function run() {
     last = r; S.done[card.id] = 'recorded'; save();
     await queue.add({ id: S.sid + '|' + card.id, rev: ++rev, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
     // A short answer to a speaking question: Didi asks for more, once, the way a teacher would.
+    if (!speak) {   // blanks move on by themselves; "Back" on the next sentence lets the child redo one
+      rec.release(); dock.classList.remove('after');
+      dock.innerHTML = '<p class="dock-say"><span class="saved"><b>★</b>Saved</span></p><span></span><span></span><span></span>';
+      return void setTimeout(() => { if (steps[S.pos]?.card === card) next(); }, 1000);
+    }
     const short = speak && !nudged && rec.canAdd && r.dur < Math.max(8, card.target * 2.5);
     recorded(short);
     if (short) { nudged = true; const didi = document.getElementById('didi'); didi?.classList.add('speaking'); voice.say('more', 'Very nice! Can you tell me a little more?').then(() => didi?.classList.remove('speaking')); }

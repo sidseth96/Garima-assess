@@ -222,7 +222,7 @@ async function paper(sid) {
       return m.items.map((it, n) => {
         let i = 0; const clip = D.clips[it.id];
         const filled = esc(it.text).replace(/ \(X\)/g, '').replace(/___/g, () => { const idx = i++; const b = it.blanks[idx]; const ck = R.checks[it.id + ':' + idx]; const ok = ck ? ck === 'ok' : b.ok; return `<em class="${ok ? 'ok' : 'no'}">${esc(b.said || 'no answer')}</em>${!ok ? `<small>answer: ${esc(b.accepted.join(' or '))}</small>` : ''}${ck ? '<small class="you">your call</small>' : b.offkey && ok ? '<small class="you">not in the answer key</small>' : ''}`; });
-        return `<div class="t-ans"><p class="t-filled">${n + 1}. ${filled}</p>${clip ? audio(it.id) : D.meta.sample ? '' : '<p class="soft">No answer recorded.</p>'}</div>`;
+        return `<div class="t-ans"><p class="t-filled">${esc(it.id.slice(1))}. ${filled}</p>${clip ? audio(it.id) : D.meta.sample ? '' : '<p class="soft">No answer recorded.</p>'}</div>`;
       }).join('');
     }
 

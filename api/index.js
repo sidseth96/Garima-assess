@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import * as store from '../lib/store.js';
 import * as ai from '../lib/ai.js';
-import { ASSESSMENTS, getAssessment, publicView, units, spokenLines, PRAISE } from '../lib/assessments.js';
+import { ASSESSMENTS, getAssessment, publicView, units, spokenLines, PRAISE, LEGACY_ITEMS } from '../lib/assessments.js';
 import { markSection, writeComment, tally, effective, ERROR_TYPES } from '../lib/mark.js';
 import { SAMPLES } from '../lib/samples.js';
 
@@ -57,6 +57,7 @@ async function loadSession(sid) {
     pick('comment'), pick('review'),
   ]);
   const clips = {}; us.forEach((u, i) => { if (clipList[i]) clips[u.id] = clipList[i]; });
+  for (const id of LEGACY_ITEMS) { const c = await pick('t-' + id); if (c) clips[id] = c; }
   if (meta.sample) for (const s of a.sections) { const c = await pick('t-' + s.id); if (c) clips[s.id] = c; }
   const marks = {}; a.sections.forEach((s, i) => { if (markList[i]) marks[s.id] = markList[i]; });
   return { sid, meta, a, us, clips, marks, comment, review: review || {} };
@@ -144,7 +145,7 @@ const ops = {
     need(body.length < 4.2e6, 413, 'Recording too long');
     const mime = String(q.mime || 'audio/webm');
     const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : 'webm';
-    const item = String(q.item || ''); need(/^[a-z]\d{1,2}$|^soundcheck$/.test(item), 400, 'Bad item');
+    const item = String(q.item || ''); need(/^[a-z]\d{1,2}[a-c]?$/.test(item), 400, 'Bad item');
     const ts = now();
     const clip = `${dir(q.sid)}clip-${item}-${ts}.${ext}`;
     await store.put(clip, body, mime.split(';')[0]);
