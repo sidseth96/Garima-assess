@@ -299,7 +299,7 @@ function run() {
     if (!r || r.dur < 1 || r.blob.size < 800) return idle('That was too short. Try again.');
     last = r; S.done[card.id] = 'recorded'; save();
     await queue.add({ id: S.sid + '|' + card.id, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
-    recorded(true);
+    recorded();
   };
   let mine = null;
   const stopMine = () => { if (mine) { mine.pause(); mine = null; } };
@@ -326,11 +326,6 @@ function run() {
         mine.play().catch(() => { mine = null; reset(); });
       };
     }
-    if (justNow && A.praise?.length) {
-      const n = Math.floor(Math.random() * A.praise.length);
-      document.getElementById('didi')?.classList.add('speaking');
-      voice.say('p' + (n + 1), A.praise[n]).then(() => document.getElementById('didi')?.classList.remove('speaking'));
-    }
   };
   const next = () => {
     clearInterval(tick); voice.stop(); stopMine(); S.pos++; save(); scrollTo(0, 0);
@@ -347,12 +342,15 @@ function run() {
 // ---------- between parts: a star and a breath ----------
 const PRAISE = ['Very good!', 'Shabash!', 'You are doing so well!', 'Wonderful!', 'Keep going!', 'Almost there!'];
 function cheer(doneIdx, nextSec) {
-  shell(`<main class="cheer">${DIDI}
+  const lines = A.praise?.length ? A.praise : PRAISE; const n = doneIdx % lines.length; const line = lines[n];
+  shell(`<main class="cheer"><span id="didi">${DIDI}</span>
     <div class="stars">${A.sections.map((x, i) => `<span class="${i <= doneIdx ? 'got' : ''} ${i === doneIdx ? 'new' : ''}">★</span>`).join('')}</div>
-    <h1>${PRAISE[doneIdx % PRAISE.length]}</h1>
+    <h1>${esc(line.split(/(?<=[!.])\s/)[0])}</h1>
     <p>You finished part ${doneIdx + 1}. ${A.sections.length - doneIdx - 1 === 1 ? 'Only 1 part to go.' : `${A.sections.length - doneIdx - 1} parts to go.`}</p>
     <button class="btn" id="on">Next: ${esc(nextSec.title)}</button></main>`);
-  document.getElementById('on').onclick = run;
+  document.getElementById('on').onclick = () => { voice.stop(); run(); };
+  // Didi says well done once per part, not after every answer.
+  if (A.praise?.length) { document.getElementById('didi').classList.add('speaking'); voice.say('p' + (n + 1), line).then(() => document.getElementById('didi')?.classList.remove('speaking')); }
 }
 
 // ---------- 4. done ----------
