@@ -104,7 +104,8 @@ const ops = {
 
   async assessment(req, q) {
     const a = getAssessment(q.id || 'ttm'); need(a, 404, 'No such test');
-    return publicView(a);
+    // vv changes whenever Didi's voice or tone changes, so phones fetch the new recordings instead of cached ones.
+    return { ...publicView(a), vv: crypto.createHash('sha1').update(a.voice + ai.MODELS.tts + voiceText('a', '') + voiceText('intro-', '') + voiceText('done', '')).digest('hex').slice(0, 8) };
   },
 
   async start(req) {

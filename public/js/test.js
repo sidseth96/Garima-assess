@@ -67,7 +67,7 @@ const voice = (() => {
     const worker = async () => {
       while (list.length) {
         const k = list.shift();
-        try { const r = await fetch(api('say', { a: AID, c: k })); if (r.ok) urls[k] = URL.createObjectURL(await r.blob()); } catch {}
+        try { const r = await fetch(api('say', { a: AID, c: k, v: A.vv || '' })); if (r.ok) urls[k] = URL.createObjectURL(await r.blob()); } catch {}
         onProgress(++done / keys.length);
       }
     };
