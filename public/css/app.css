@@ -423,3 +423,6 @@ body.kid .answer-acts .btn { white-space: nowrap; font-size: 1.0625rem; gap: .37
 .gap-text { position: relative; }
 .gap-text .count { position: absolute; left: -1.9rem; margin: 0; }
 .gap-text .neg { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; margin: 0 .2em 0 0; border-radius: 50%; background: var(--red); color: #fff; font: 700 .9375rem/1 var(--text); vertical-align: 2px; }
+
+.card-m p.check { border: 0; padding: .5rem 0 0; display: block; }
+.card-m p.check .heard { -webkit-line-clamp: unset; display: block; }
