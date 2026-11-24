@@ -9,6 +9,8 @@ const SECRET = process.env.APP_SECRET || process.env.BLOB_READ_WRITE_TOKEN || 'l
 const TEACHER_CODE = process.env.TEACHER_CODE || 'didi';
 const sign = (s) => crypto.createHmac('sha256', SECRET).update(s).digest('base64url').slice(0, 24);
 const now = () => Date.now();
+// How Didi says each line: a kind elder sister, never a strict examiner.
+const voiceText = (key, text) => (key === 'done' ? '[excited] [warmly] ' : key === 'greeting' ? '[happy] [warmly] ' : key.startsWith('intro-') ? '[cheerfully] [warmly] ' : '[warmly] [gently] ') + text;
 
 class Halt extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const need = (cond, status, msg) => { if (!cond) throw new Halt(status, msg); };
@@ -177,7 +179,7 @@ const ops = {
 
   async say(req, q, res) {
     const a = getAssessment(q.a || 'ttm'); need(a, 404, 'No such test');
-    const lines = spokenLines(a); const text = lines[q.c]; need(text, 404, 'No such line');
+    const lines = spokenLines(a); need(lines[q.c], 404, 'No such line'); const text = voiceText(q.c, lines[q.c]);
     const h = crypto.createHash('sha1').update(a.voice + '|' + ai.MODELS.tts + '|' + text).digest('hex').slice(0, 16);
     const p = `tts/${a.id}/${q.c}-${h}.mp3`;
     let f = await store.get(p);
@@ -200,10 +202,10 @@ const ops = {
     const keys = Object.keys(lines);
     for (let i = 0; i < keys.length; i += 4) {
       await Promise.all(keys.slice(i, i + 4).map(async (c) => {
-        const h = crypto.createHash('sha1').update(a.voice + '|' + ai.MODELS.tts + '|' + lines[c]).digest('hex').slice(0, 16);
+        const text = voiceText(c, lines[c]); const h = crypto.createHash('sha1').update(a.voice + '|' + ai.MODELS.tts + '|' + text).digest('hex').slice(0, 16);
         const p = `tts/${a.id}/${c}-${h}.mp3`;
         try {
-          if (!(await store.get(p))) { await store.put(p, await ai.speak(lines[c], a.voice), 'audio/mpeg'); out[c] = 'made'; } else out[c] = 'ready';
+          if (!(await store.get(p))) { const au = await ai.speak(text, a.voice); await store.put(p, au, 'audio/mpeg'); out[c] = 'made with ' + (au.model || '?'); } else out[c] = 'ready';
         } catch (e) { out[c] = 'failed: ' + String(e.message).slice(0, 160); }
       }));
     }
