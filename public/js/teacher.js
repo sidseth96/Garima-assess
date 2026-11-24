@@ -101,7 +101,7 @@ async function paper(sid) {
     const checks = [];
     for (const sec of D.sections) {
       if (!sec.mark) continue;
-      if (sec.mark.kind === 'blanks') for (const it of sec.mark.items) if (it.blanks.some((b) => b.doubt) && D.clips[it.id]) checks.push({ id: it.id, why: 'Didi was not sure what she heard', q: it.text, heard: D.clips[it.id].text, ai: it.blanks.map((b) => `${b.said || 'nothing'} ${b.ok ? '✓' : '✗'}`).join(',  ') });
+      if (sec.mark.kind === 'blanks') for (const it of sec.mark.items) if (it.blanks.some((b) => b.doubt) && D.clips[it.id]) checks.push({ id: it.id, why: 'Didi was not sure what she heard', q: it.text.replace(/ \(X\)/g, ''), heard: D.clips[it.id].text, ai: it.blanks.map((b) => `${b.said || 'nothing'} ${b.ok ? '✓' : '✗'}`).join(',  ') });
       if (sec.mark.kind === 'speak') for (const c of sec.mark.cards) if (c.sentences.some((x) => x.doubt) && D.clips[c.id]) checks.push({ id: c.id, why: 'Some words were hard to hear', q: sec.cards.find((x) => x.id === c.id).say, heard: D.clips[c.id].text, ai: `${c.n.ok} correct, ${c.n.err} with errors, ${c.n.unclear + c.n.wrong} not counted` });
     }
     const big = D.sections.filter((x) => x.mark?.kind === 'speak').flatMap((sec) => sec.mark.cards.map((c) => ({ sec, c }))).filter((x) => x.c.counted && D.clips[x.c.id] && !checks.some((k) => k.id === x.c.id)).sort((a, b) => b.c.marks - a.c.marks)[0];
@@ -146,7 +146,7 @@ async function paper(sid) {
       }).join('');
       return m.items.map((it, n) => {
         let i = 0; const clip = D.clips[it.id];
-        const filled = esc(it.text).replace(/___/g, () => { const b = it.blanks[i++]; return `<em class="${b.ok ? 'ok' : 'no'}">${esc(b.said || 'no answer')}</em>${!b.ok ? ` <small>${esc(b.accepted.join(' / '))}</small>` : ''}${b.doubt ? '<span class="dbt" style="font-family:var(--text)">hard to hear</span>' : ''}`; });
+        const filled = esc(it.text).replace(/ \(X\)/g, '').replace(/___/g, () => { const b = it.blanks[i++]; return `<em class="${b.ok ? 'ok' : 'no'}">${esc(b.said || 'no answer')}</em>${!b.ok ? ` <small>${esc(b.accepted.join(' / '))}</small>` : ''}${b.doubt ? '<span class="dbt" style="font-family:var(--text)">hard to hear</span>' : ''}`; });
         return `<div class="card-m"><p class="filled">${n + 1}. ${filled}</p>${clip ? audio(it.id) : '<p class="nothing">No answer recorded.</p>'}</div>`;
       }).join('');
     }

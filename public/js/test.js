@@ -242,7 +242,7 @@ function run() {
   const line = speak ? card.say : sec.say;
   const gapHTML = () => {
     let i = 0;
-    return esc(card.text).replace(/___/g, () => { const o = card.options?.[i++]; return o ? `<span class="opt">${esc(o.join(' / '))}</span>` : '<u></u>'; });
+    return esc(card.text).replace(/ \(X\)/g, '<span class="neg" aria-label="not">✗</span>').replace(/___/g, () => { const o = card.options?.[i++]; return o ? `<span class="opt">${esc(o.join(' / '))}</span>` : '<u></u>'; });
   };
   shell(`
     <ol class="trail" aria-label="Part ${secIdx + 1} of ${A.sections.length}">${A.sections.map((x, i) => `<li class="${i < secIdx ? 'done' : i === secIdx ? 'now' : ''}">${i < secIdx ? '★' : i + 1}</li>`).join('')}</ol>
