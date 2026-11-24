@@ -152,7 +152,8 @@ const ops = {
 
   // Marks one section. Called by the child's phone after the last upload, and by the teacher screen for anything still unmarked.
   async mark(req, q) {
-    const b = await readJSON(req);
+    const t0 = now();
+    const b = { ...q, ...(await readJSON(req)) };
     need(validSid(b.sid) && (b.key === sign('s:' + b.sid) || isTeacher(req, q)), 403, 'Not allowed');
     const S = await loadSession(b.sid);
     const section = S.a.sections.find((s) => s.id === b.section); need(section, 400, 'Bad section');
@@ -175,7 +176,7 @@ const ops = {
       try { S.comment = await writeComment(S.a, S.marks, S.meta.name); await store.put(`${dir(S.sid)}comment-${now()}.json`, S.comment); } catch {}
     }
     await saveSummary(S);
-    return { ok: true, score: m.score, allMarked };
+    return { ok: true, score: m.score, max: m.max, allMarked, ms: now() - t0 };
   },
 
   async say(req, q, res) {
