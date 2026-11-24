@@ -88,6 +88,8 @@ async function paper(sid) {
   let D = await call('session', { params: { sid } });
   const audio = (item) => (D.clips[item]?.audio ? `<audio controls preload="none" src="${url('audio', { sid, item, t: token })}"></audio>` : '');
   const save = async (body) => { const r = await call('review', { body: { sid, ...body } }); D.review = r.review; D.summary = r.summary; return r; };
+  let chain = Promise.resolve();
+  const saveBg = (body) => { chain = chain.then(() => call('review', { body: { sid, ...body } })).catch(() => toast('Could not save. Check your connection.')); };
 
   const unmarked = D.sections.filter((s) => !s.mark).map((s) => s.id);
   if (unmarked.length && D.summary.status !== 'started') {
@@ -122,7 +124,7 @@ async function paper(sid) {
             <div class="yn"><button class="yes ${D.review.voiceOk === true ? 'on' : ''}" data-voice="1" ${locked ? 'disabled' : ''}>Yes, it is</button><button class="no ${D.review.voiceOk === false ? 'on' : ''}" data-voice="0" ${locked ? 'disabled' : ''}>No</button></div></div>` : D.meta.sample ? '' : '<p class="nothing">No recordings have arrived yet.</p>'}
           ${checks.slice(0, 3).map((c) => `<div class="check"><h3>${esc(c.why)}</h3><p class="q">${esc(c.q)}</p>${audio(c.id)}<p class="heard">${esc(c.heard || '')}</p><p class="q">Didi marked: ${esc(c.ai)}</p>
             <div class="yn"><button class="yes ${state[c.id] === 'ok' ? 'on' : ''}" data-check="${c.id}" data-v="ok" ${locked ? 'disabled' : ''}>Marked right</button><button class="no ${state[c.id] === 'wrong' ? 'on' : ''}" data-check="${c.id}" data-v="wrong" ${locked ? 'disabled' : ''}>Marked wrong</button></div>
-            ${state[c.id] === 'wrong' ? '<p class="small err">Change the mark for this part in the row above.</p>' : ''}</div>`).join('')}
+            ${state[c.id] === 'wrong' ? '<p class="small err fixhint">Change the mark for this part in the row at the top.</p>' : ''}</div>`).join('')}
         </section>
         <section class="panel"><h2>Comments</h2>
           ${s.total != null ? `<div class="tally"><div><b>${t.sentences}</b><span>English sentences</span></div><div class="g"><b>${t.ok}</b><span>fully correct</span></div><div><b>${t.err}</b><span>understood, with errors</span></div><div class="r"><b>${t.unclear + t.wrong}</b><span>not understood</span></div></div>` : ''}
@@ -153,12 +155,33 @@ async function paper(sid) {
     }
 
     // --- actions ---
-    app.querySelectorAll('.strip input').forEach((inp) => { inp.onchange = async () => { const v = inp.value === '' ? null : Number(inp.value); await save({ scores: { [inp.dataset.sec]: v } }); toast('Mark saved'); draw(); }; });
-    app.querySelectorAll('[data-voice]').forEach((b) => { b.onclick = async () => { await save({ voiceOk: b.dataset.voice === '1' }); draw(); }; });
-    app.querySelectorAll('[data-check]').forEach((b) => { b.onclick = async () => { await save({ checks: { [b.dataset.check]: b.dataset.v } }); draw(); }; });
-    const cm = document.getElementById('comment'); cm.onchange = async () => { await save({ comment: cm.value }); toast('Comment saved'); };
+    // These respond at once on screen; saving happens quietly behind.
+    app.querySelectorAll('.strip input').forEach((inp) => { inp.onchange = () => {
+      const sec = D.sections.find((x) => x.id === inp.dataset.sec); const sc = D.summary.scores[sec.id];
+      let v = inp.value === '' ? null : Math.max(0, Math.min(sec.marks, Math.round(Number(inp.value) * 2) / 2));
+      if (Number.isNaN(v)) v = null;
+      sc.final = v ?? sc.ai; inp.value = sc.final ?? '';
+      inp.closest('div').querySelector('.was').innerHTML = sc.ai != null && sc.final !== sc.ai ? `Didi gave ${num(sc.ai)}` : '&nbsp;';
+      const all = Object.values(D.summary.scores); const g = document.getElementById('grade');
+      if (g && all.every((x) => x.final != null)) { D.summary.total = all.reduce((t, x) => t + x.final, 0); g.innerHTML = `${num(D.summary.total)}<small>/100</small>`; }
+      saveBg({ scores: { [sec.id]: v } }); toast('Mark saved');
+    }; });
+    const readySign = () => { const b = document.getElementById('sign'); if (!b) return; b.disabled = !(D.review.voiceOk && D.summary.total != null); b.previousElementSibling.textContent = D.review.voiceOk ? 'Ready to sign off.' : 'Confirm the voice first.'; };
+    app.querySelectorAll('[data-voice]').forEach((b) => { b.onclick = () => {
+      D.review.voiceOk = b.dataset.voice === '1';
+      app.querySelectorAll('[data-voice]').forEach((x) => x.classList.toggle('on', x === b));
+      readySign(); saveBg({ voiceOk: D.review.voiceOk });
+    }; });
+    app.querySelectorAll('[data-check]').forEach((b) => { b.onclick = () => {
+      const id = b.dataset.check; D.review.checks = { ...(D.review.checks || {}), [id]: b.dataset.v };
+      app.querySelectorAll(`[data-check="${id}"]`).forEach((x) => x.classList.toggle('on', x === b));
+      const box = b.closest('.check'); box.querySelector('.fixhint')?.remove();
+      if (b.dataset.v === 'wrong') box.insertAdjacentHTML('beforeend', '<p class="small err fixhint">Change the mark for this part in the row at the top.</p>');
+      saveBg({ checks: { [id]: b.dataset.v } });
+    }; });
+    const cm = document.getElementById('comment'); cm.onchange = () => { saveBg({ comment: cm.value }); toast('Comment saved'); };
     const grow = () => { cm.style.height = 'auto'; cm.style.height = cm.scrollHeight + 4 + 'px'; }; cm.oninput = grow; grow();
-    document.getElementById('sign')?.addEventListener('click', async () => { await save({ signedOff: true, comment: cm.value }); toast('Signed off'); draw(); });
+    document.getElementById('sign')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await chain; await save({ signedOff: true, comment: cm.value }); toast('Signed off'); draw(); });
     document.getElementById('undo')?.addEventListener('click', async () => { await save({ signedOff: false }); draw(); });
     document.getElementById('mail1')?.addEventListener('click', () => email([D.summary]));
     document.getElementById('remark').onclick = async () => { if (!confirm("Mark this test again? Didi's marks and comment will be replaced. Marks you changed yourself stay.")) return; app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking again</b>This takes a minute or two.</div>`; await markAll(sid, D.sections.map((x) => x.id), true); paper(sid); };
