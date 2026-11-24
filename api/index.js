@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import * as store from '../lib/store.js';
 import * as ai from '../lib/ai.js';
-import { ASSESSMENTS, getAssessment, publicView, units, spokenLines } from '../lib/assessments.js';
+import { ASSESSMENTS, getAssessment, publicView, units, spokenLines, PRAISE } from '../lib/assessments.js';
 import { markSection, writeComment, tally, effective, ERROR_TYPES } from '../lib/mark.js';
 import { SAMPLES } from '../lib/samples.js';
 
@@ -10,7 +10,7 @@ const TEACHER_CODE = process.env.TEACHER_CODE || 'didi';
 const sign = (s) => crypto.createHmac('sha256', SECRET).update(s).digest('base64url').slice(0, 24);
 const now = () => Date.now();
 // How Didi says each line: a kind elder sister, never a strict examiner.
-const voiceText = (key, text) => (key === 'done' ? '[excited] [warmly] ' : key === 'greeting' ? '[happy] [warmly] ' : key.startsWith('intro-') ? '[cheerfully] [warmly] ' : '[warmly] [gently] ') + text;
+const voiceText = (key, text) => (key === 'done' ? '[excited] [warmly] ' : /^p\d$/.test(key) ? '[happy] [warmly] ' : key === 'greeting' ? '[happy] [warmly] ' : key.startsWith('intro-') ? '[cheerfully] [warmly] ' : '[warmly] [gently] ') + text;
 
 class Halt extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const need = (cond, status, msg) => { if (!cond) throw new Halt(status, msg); };
@@ -105,7 +105,7 @@ const ops = {
   async assessment(req, q) {
     const a = getAssessment(q.id || 'ttm'); need(a, 404, 'No such test');
     // vv changes whenever Didi's voice or tone changes, so phones fetch the new recordings instead of cached ones.
-    return { ...publicView(a), vv: crypto.createHash('sha1').update(a.voice + ai.MODELS.tts + voiceText('a', '') + voiceText('intro-', '') + voiceText('done', '')).digest('hex').slice(0, 8) };
+    return { ...publicView(a), praise: PRAISE, vv: crypto.createHash('sha1').update(a.voice + ai.MODELS.tts + voiceText('a', '') + voiceText('intro-', '') + voiceText('done', '')).digest('hex').slice(0, 8) };
   },
 
   async start(req) {

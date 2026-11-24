@@ -216,7 +216,7 @@ async function check() {
   };
   document.getElementById('start').onclick = async () => { rec.unwatch(); if (S.pos === 0 && !Object.keys(S.done).length) await greet(); run(); };
   if (!loaded) {
-    const keys = ['greeting', 'done', ...A.sections.flatMap((s) => ['intro-' + s.id, ...(s.kind === 'blanks' ? ['say-' + s.id] : s.cards.map((c) => c.id))])];
+    const keys = ['greeting', 'done', ...(A.praise || []).map((x, i) => 'p' + (i + 1)), ...A.sections.flatMap((s) => ['intro-' + s.id, ...(s.kind === 'blanks' ? ['say-' + s.id] : s.cards.map((c) => c.id))])];
     A.sections.forEach((s) => { if (s.image) new Image().src = s.image; });
     await voice.preload(keys, (p) => { const b = document.getElementById('dlbar'); if (b) b.style.width = Math.round(p * 100) + '%'; });
     loaded = true;
@@ -279,6 +279,7 @@ function run() {
 
   const dock = document.getElementById('dock'); const maxSec = speak ? 150 : 60; let tick = 0; let last = null;
   const idle = (msg) => {
+    dock.classList.remove('after');
     dock.innerHTML = `<p class="dock-say">${msg || 'Press the red button and speak'}</p><span class="left"></span><button class="rec" id="rec" aria-label="Start recording">${icon.mic}</button><span class="right"><button class="link small" id="skip">I don't know</button></span>`;
     document.getElementById('rec').onclick = begin;
     document.getElementById('skip').onclick = () => { voice.stop(); S.done[card.id] = 'skipped'; next(); };
@@ -298,18 +299,41 @@ function run() {
     if (!r || r.dur < 1 || r.blob.size < 800) return idle('That was too short. Try again.');
     last = r; S.done[card.id] = 'recorded'; save();
     await queue.add({ id: S.sid + '|' + card.id, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
-    recorded();
+    recorded(true);
   };
-  const recorded = () => {
-    dock.innerHTML = `<p class="dock-say"><span class="saved"><b>★</b>Saved. Well done!</span></p>
-      <span class="left" style="display:flex;gap:.25rem"><button class="mini" id="again">${icon.redo}Again</button>${last ? `<button class="mini" id="mine">${icon.play}Hear me</button>` : ''}</span>
-      <span></span><span class="right"><button class="btn" id="next">Next</button></span>`;
-    document.getElementById('again').onclick = () => idle();
+  let mine = null;
+  const stopMine = () => { if (mine) { mine.pause(); mine = null; } };
+  const recorded = (justNow) => {
+    const secs = last ? Math.max(1, last.dur) : 0; const mmss = (n) => Math.floor(n / 60) + ':' + String(Math.floor(n % 60)).padStart(2, '0');
+    dock.classList.add('after');
+    dock.innerHTML = `<div class="answer">
+        <p class="answer-top"><span class="saved"><b>★</b>Saved. Well done!</span></p>
+        ${last ? `<button class="playback" id="mine" aria-label="Listen to your answer"><span class="pb-btn" id="pbi">${icon.play}</span><span class="pb-mid"><span class="pb-label" id="pbl">Listen to your answer</span><span class="pb-bar"><i id="pbb"></i></span></span><span class="pb-time" id="pbt">${mmss(secs)}</span></button>` : ''}
+        <div class="answer-acts"><button class="btn quiet" id="again">${icon.redo}Record again</button><button class="btn" id="next">Next</button></div>
+      </div>`;
+    document.getElementById('again').onclick = () => { stopMine(); voice.stop(); dock.classList.remove('after'); idle('Press the red button and answer again'); };
     document.getElementById('next').onclick = next;
-    if (last) document.getElementById('mine').onclick = () => { voice.stop(); const a = new Audio(URL.createObjectURL(last.blob)); a.play().catch(() => {}); };
+    if (last) {
+      const btn = document.getElementById('mine'); const url = URL.createObjectURL(last.blob);
+      const reset = () => { const i = document.getElementById('pbi'); if (!i) return; i.innerHTML = icon.play; document.getElementById('pbl').textContent = 'Listen to your answer'; document.getElementById('pbb').style.width = '0'; document.getElementById('pbt').textContent = mmss(secs); btn.classList.remove('on'); };
+      btn.onclick = () => {
+        voice.stop(); document.getElementById('didi')?.classList.remove('speaking');
+        if (mine) { stopMine(); return reset(); }
+        mine = new Audio(url); btn.classList.add('on');
+        document.getElementById('pbi').innerHTML = icon.stop; document.getElementById('pbl').textContent = 'This is you speaking';
+        mine.ontimeupdate = () => { const b = document.getElementById('pbb'); if (!b || !mine) return; b.style.width = Math.min(100, (mine.currentTime / secs) * 100) + '%'; document.getElementById('pbt').textContent = mmss(mine.currentTime); };
+        mine.onended = mine.onerror = () => { mine = null; reset(); };
+        mine.play().catch(() => { mine = null; reset(); });
+      };
+    }
+    if (justNow && A.praise?.length) {
+      const n = Math.floor(Math.random() * A.praise.length);
+      document.getElementById('didi')?.classList.add('speaking');
+      voice.say('p' + (n + 1), A.praise[n]).then(() => document.getElementById('didi')?.classList.remove('speaking'));
+    }
   };
   const next = () => {
-    clearInterval(tick); voice.stop(); S.pos++; save(); scrollTo(0, 0);
+    clearInterval(tick); voice.stop(); stopMine(); S.pos++; save(); scrollTo(0, 0);
     const nx = steps[S.pos];
     if (nx && nx.section !== sec) return cheer(secIdx, nx.section);
     run();
