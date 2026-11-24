@@ -42,16 +42,26 @@ async function register() {
   app.innerHTML = top() + '<p class="empty"><span class="spin"></span></p>';
   const { rows } = await call('sessions'); rowsCache = rows;
   const cols = rows[0]?.columns || [];
-  const done = rows.filter((r) => r.total != null);
-  app.innerHTML = `${top('<button class="link small" id="out">Sign out</button>')}
-    <div class="headline"><div><h1>Class register</h1><p>${rows.length ? `${rows.length} ${rows.length === 1 ? 'child has' : 'children have'} started the speaking test. ${done.length} marked.` : 'Share the test link with your students to begin.'}</p></div>
-      <div class="tools"><button class="btn quiet small" id="copy">Copy test link</button>${done.length ? '<button class="btn quiet small" id="csv">Download marks</button><button class="btn small" id="mail">Email results</button>' : ''}</div></div>
-    <div class="register">${rows.length ? `<table><thead><tr><th>Student</th><th>Status</th>${cols.map((c) => `<th class="num sec">${esc(c.title)}<br>/${c.marks}</th>`).join('')}<th class="num">Total<br>/100</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr data-sid="${r.sid}"><td class="who"><b>${esc(r.name)}</b><span>${[r.cls && 'Class ' + esc(r.cls), esc(r.school), day(r.startedAt)].filter(Boolean).join(', ')}</span></td>
+  const real = rows.filter((r) => !r.sample);
+  const done = real.filter((r) => r.total != null);
+  const groups = [
+    ['Waiting for your check', real.filter((r) => r.status === 'marked').sort((x, y) => (x.submittedAt || 0) - (y.submittedAt || 0)), 'Open each one, answer Didi\'s questions and sign off.'],
+    ['Not ready yet', real.filter((r) => r.status === 'started' || r.status === 'submitted'), 'Still taking the test, or being marked.'],
+    ['Checked', real.filter((r) => r.status === 'checked'), ''],
+    ['Samples', rows.filter((r) => r.sample), 'Children from recorded calls, used to compare Didi\'s marks with marks given by hand.'],
+  ].filter((g) => g[1].length);
+  const waiting = groups.find((g) => g[0] === 'Waiting for your check')?.[1] || [];
+  const skipNote = (r) => (r.answered && r.answered.speak < r.answered.speakOf * 0.7 ? `<span class="t-flag">Answered ${r.answered.speak} of ${r.answered.speakOf} speaking questions</span>` : '');
+  const table = (list) => `<div class="register"><table><thead><tr><th>Student</th><th>Status</th>${cols.map((c) => `<th class="num sec">${esc(c.title)}<br>/${c.marks}</th>`).join('')}<th class="num">Total<br>/100</th></tr></thead><tbody>
+      ${list.map((r) => `<tr data-sid="${r.sid}"><td class="who"><b>${esc(r.name)}</b><span>${[r.cls && 'Class ' + esc(r.cls), esc(r.school), day(r.startedAt)].filter(Boolean).join(', ')}</span>${skipNote(r)}</td>
         <td><span class="status ${r.status}">${STATUS[r.status] || r.status}</span></td>
-        ${cols.map((c) => `<td class="num sec">${num(r.scores?.[c.id]?.final)}</td>`).join('')}
-        <td class="tot">${r.total != null ? num(r.total) : ''}</td></tr>`).join('')}</tbody></table>`
-      : '<div class="empty"><b>No tests yet</b>When a child finishes the test, their marks appear here.</div>'}</div>`;
+        ${cols.map((c) => `<td class="num sec">${r.status === 'marked' && !r.sample ? '' : num(r.scores?.[c.id]?.final)}</td>`).join('')}
+        <td class="tot">${r.total != null && (r.status !== 'marked' || r.sample) ? num(r.total) : r.status === 'marked' ? '<span class="t-open">Check</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  app.innerHTML = `${top('<button class="link small" id="out">Sign out</button>')}
+    <div class="headline"><div><h1>Class register</h1><p>${!real.length ? 'Share the test link with your students to begin.' : waiting.length ? `<b>${waiting.length} ${waiting.length === 1 ? 'test is' : 'tests are'} waiting for your check.</b> ${real.filter((r) => r.status === 'checked').length} checked so far.` : `Nothing is waiting for you. ${real.filter((r) => r.status === 'checked').length} checked.`}</p></div>
+      <div class="tools">${waiting.length ? `<button class="btn small" id="startq">Start checking</button>` : ''}<button class="btn quiet small" id="copy">Copy test link</button>${done.length ? '<button class="btn quiet small" id="csv">Download marks</button><button class="btn quiet small" id="mail">Email results</button>' : ''}</div></div>
+    ${groups.length ? groups.map((g) => `<h2 class="t-group">${g[0]} <span>${g[1].length}</span></h2>${g[2] ? `<p class="t-groupnote">${g[2]}</p>` : ''}${table(g[1])}`).join('') : '<div class="register"><div class="empty"><b>No tests yet</b>When a child finishes the test, their marks appear here.</div></div>'}`;
+  document.getElementById('startq')?.addEventListener('click', () => { location.hash = waiting[0].sid; });
   document.getElementById('out').onclick = () => { token = ''; localStorage.removeItem(TK); login(); };
   document.getElementById('copy').onclick = async () => { const link = location.origin + '/'; try { await navigator.clipboard.writeText(link); toast('Test link copied'); } catch { prompt('Copy this link', link); } };
   app.querySelectorAll('tr[data-sid]').forEach((tr) => { tr.onclick = () => { location.hash = tr.dataset.sid; }; });
@@ -87,6 +97,7 @@ const tone = (r) => (r >= 0.7 ? 'good' : r >= 0.4 ? 'mid' : 'low');
 async function paper(sid) {
   app.innerHTML = top() + '<p class="empty"><span class="spin"></span></p>';
   let D = await call('session', { params: { sid } });
+  if (!rowsCache.length) { try { rowsCache = (await call('sessions')).rows; } catch {} }
   const first = () => esc(D.meta.name.split(' ')[0]);
   const audio = (item) => (D.clips[item]?.audio ? `<audio controls preload="none" src="${url('audio', { sid, item, t: token })}"></audio>` : '');
   let chain = Promise.resolve();
@@ -141,6 +152,7 @@ async function paper(sid) {
     }).join('');
     app.innerHTML = `${top()}<a class="back" href="#">${chev.replace('class="chev"', 'class="chev" style="transform:rotate(90deg)"')} Class register</a>
       <div class="t-narrow"><header class="t-head"><div><h1>${esc(D.meta.name)}</h1><p class="soft">${[D.meta.cls && 'Class ' + esc(D.meta.cls), esc(D.meta.school), day(D.meta.startedAt)].filter(Boolean).join(', ')}</p></div></header>
+      ${(() => { const q = rowsCache.filter((r) => !r.sample && r.status === 'marked'); return q.length > 1 ? `<p class="small soft" style="margin-bottom:.75rem">${q.length} tests waiting for your check, including this one.</p>` : ''; })()}
       <div class="t-intro"><b>Didi has marked this test and needs your help with ${checks.length} ${checks.length === 1 ? 'thing' : 'things'}.</b> The result appears once you have answered them.</div>
       ${body}
       <div class="t-bar"><span id="leftn"></span><button class="btn" id="reveal">See the result</button></div></div>`;
@@ -160,11 +172,14 @@ async function paper(sid) {
   // ----- step 2: the result -----
   function drawReport() {
     const s = D.summary; const locked = !!R.signedOff; const t = D.tally; const cm = D.comment || {};
+    const an = (() => { if (!marked) return null; const o = { speak: 0, speakOf: 0, blanks: 0, blanksOf: 0 }; for (const sec of D.sections) { if (sec.mark.kind === 'speak') for (const c of sec.mark.cards) { o.speakOf++; if (c.counted > 0) o.speak++; } else for (const it of sec.mark.items) for (const bl of it.blanks) { o.blanksOf++; if (bl.said) o.blanks++; } } return o; })();
+    const nextUp = rowsCache.filter((r) => !r.sample && r.status === 'marked' && r.sid !== sid).sort((x, y) => (x.submittedAt || 0) - (y.submittedAt || 0))[0];
     const counted = Math.max(1, t.sentences); const pc = (n) => Math.round((n / counted) * 100);
     app.innerHTML = `${top()}<a class="back" href="#">${chev.replace('class="chev"', 'class="chev" style="transform:rotate(90deg)"')} Class register</a>
       <header class="t-head"><div><h1>${esc(D.meta.name)}</h1><p class="soft">${[D.meta.cls && 'Class ' + esc(D.meta.cls), esc(D.meta.school), 'Speaking test', day(D.meta.startedAt)].filter(Boolean).join(', ')}</p>
           <p class="t-status"><span class="status ${s.status}">${STATUS[s.status]}</span>${D.meta.sample ? '<span class="small soft">From a recorded call. No clips to play.</span>' : ''}${checks.length ? `<button class="link small" id="recheck">${checks.length} checks answered. See them again</button>` : ''}</p></div>
         ${s.total != null ? `<div class="t-total"><b id="total">${num(s.total)}</b><span>out of 100</span></div>` : `<div class="t-total none"><b>${s.clips} of ${s.units}</b><span>answers received</span></div>`}</header>
+      ${an && an.speak < an.speakOf ? `<div class="${an.speak < an.speakOf * 0.7 ? 't-note-box strong' : 't-note-box'}"><b>${first()} answered ${an.speak} of ${an.speakOf} speaking questions${an.blanks < an.blanksOf ? ` and filled ${an.blanks} of ${an.blanksOf} blanks` : ''}.</b> ${an.speak < an.speakOf * 0.7 ? 'Most of the lost marks come from questions left unanswered, not from mistakes.' : 'Unanswered questions score nothing.'}</div>` : ''}
       ${R.voiceOk === false ? '<div class="t-warn">You said this is not the child\'s own voice. This result should not be used until the child takes the test again.</div>' : ''}
       ${!marked ? '<div class="t-warn">Didi could not finish marking this test. Use "Mark again with Didi" at the bottom of the page.</div>' : ''}
 
@@ -187,7 +202,7 @@ async function paper(sid) {
           <div><h3 class="r">Needs work</h3><ul>${(cm.workOn || []).map((w) => `<li><b>${esc(w.area)}</b>${w.examples.length ? `<span class="t-eg">${w.examples.map((e) => '“' + esc(e) + '”').join('  ')}</span>` : ''}</li>`).join('')}</ul></div>
           <div><h3>Practise next</h3><ul>${(cm.revise || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></div>` : cm.comment ? `<p>${esc(cm.comment)}</p>${cm.revise?.length ? `<p class="soft">Practise next: ${esc(cm.revise.join('; '))}</p>` : ''}` : '<p class="soft">The summary appears once the test is marked.</p>'}
         <details class="t-note"><summary>Edit the comment that goes in the email and spreadsheet</summary><textarea id="comment" rows="6" ${locked ? 'disabled' : ''}>${esc(s.comment || '')}</textarea></details>
-        <div class="t-sign">${locked ? `<span class="status checked">Signed off on ${day(R.signedOffAt)}</span><span class="tools"><button class="btn quiet small" id="undo">Reopen</button><button class="btn small" id="mail1">Email result</button></span>`
+        <div class="t-sign">${locked ? `<span class="status checked">Signed off on ${day(R.signedOffAt)}</span><span class="tools"><button class="btn quiet small" id="undo">Reopen</button><button class="btn quiet small" id="mail1">Email result</button>${nextUp ? `<button class="btn small" id="nextup">Next student: ${esc(nextUp.name)}</button>` : '<a class="btn small" href="#">Back to the register</a>'}</span>`
           : `<span class="small soft">Signing off marks this result as checked by you.</span><button class="btn" id="sign" ${marked && R.voiceOk !== false ? '' : 'disabled'}>Sign off</button>`}</div>
       </section>
 
@@ -201,7 +216,7 @@ async function paper(sid) {
       if (m.kind === 'speak') return m.cards.map((c) => {
         const clip = D.clips[c.id]; const own = R.checks[c.id] === 'wrong' && typeof R.cardMarks[c.id] === 'number';
         return `<div class="t-ans"><p class="t-q">${esc(qOf(c.id).say)}</p>
-          <p class="t-line">${clip ? `${c.counted} of the ${c.target} sentences asked for. ${c.n.ok} correct, ${c.n.err} with errors, ${c.n.unclear + c.n.wrong} not understood. ${own ? `You gave ${num(R.cardMarks[c.id])}` : `Worth ${num(Math.round(c.raw * 100) / 100)}`} of ${num(c.marks)}.` : 'No answer recorded.'}</p>
+          <p class="t-line">${!clip || !c.counted ? `<span class="t-flag">No answer</span> Asked for ${c.target} sentences. 0 of ${num(c.marks)} marks.` : `Said ${c.counted} ${c.counted === 1 ? 'sentence' : 'sentences'}, asked for ${c.target}. ${c.n.ok} correct${c.n.err ? `, ${c.n.err} with errors` : ''}${c.n.unclear + c.n.wrong ? `, ${c.n.unclear + c.n.wrong} not understood` : ''}. ${own ? `You gave ${num(R.cardMarks[c.id])}` : `${num(Math.round(c.raw * 2) / 2)}`} of ${num(c.marks)} marks.`}</p>
           ${clip ? audio(c.id) : ''}${c.sentences.length ? sentenceList(c) : clip ? `<p class="soft">${clip.failed ? 'This recording could not be turned into text. Listen and mark it yourself.' : 'Nothing was said in English.'}</p>` : ''}</div>`;
       }).join('');
       return m.items.map((it, n) => {
@@ -221,9 +236,10 @@ async function paper(sid) {
       saveBg({ scores: { [sec.id]: v } }); toast('Mark saved');
     }; });
     const cmt = document.getElementById('comment'); cmt.onchange = () => { saveBg({ comment: cmt.value }); toast('Comment saved'); };
-    document.getElementById('sign')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await saveBg({ signedOff: true }); R.signedOff = true; R.signedOffAt = Date.now(); D.summary.status = 'checked'; toast('Signed off'); drawReport(); });
+    document.getElementById('sign')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.innerHTML = '<span class="spin"></span>'; await saveBg({ signedOff: true }); R.signedOff = true; R.signedOffAt = Date.now(); D.summary.status = 'checked'; const row = rowsCache.find((r) => r.sid === sid); if (row) row.status = 'checked'; toast('Signed off'); drawReport(); });
     document.getElementById('undo')?.addEventListener('click', async () => { await saveBg({ signedOff: false }); R.signedOff = false; D.summary.status = 'marked'; drawReport(); });
     document.getElementById('mail1')?.addEventListener('click', () => email([D.summary]));
+    document.getElementById('nextup')?.addEventListener('click', () => { scrollTo(0, 0); location.hash = nextUp.sid; });
     document.getElementById('remark').onclick = async () => { if (!confirm("Mark this test again? Didi's marks and summary will be replaced. Your own answers to the checks stay.")) return; app.innerHTML = `${top()}<div class="empty"><b><span class="spin"></span> Marking again</b>This takes about a minute.</div>`; await markAll(sid, D.sections.map((x) => x.id), true); paper(sid); };
     document.getElementById('archive').onclick = async () => { if (!confirm('Remove this test from the register?')) return; await saveBg({ archived: true }); location.hash = ''; };
   }

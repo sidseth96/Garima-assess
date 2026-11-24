@@ -92,7 +92,14 @@ function summarise(S) {
     comment = [S.comment?.comment, `Spoke ${t.sentences} English sentences in all: ${t.ok} fully correct, ${t.err} with errors but understood, ${t.unclear + t.wrong} not understood or off the point.${t.hindi ? ` ${t.hindi} in Hindi, not counted.` : ''}`,
       S.comment?.revise?.length ? 'Practise next: ' + S.comment.revise.join('; ') + '.' : ''].filter(Boolean).join('\n');
   }
+  // How much the child actually attempted, so a low mark from silence is not read as weak English.
+  let answered = null;
+  if (allMarked) {
+    answered = { speak: 0, speakOf: 0, blanks: 0, blanksOf: 0 };
+    for (const s of a.sections) { const m = marks[s.id]; if (m.kind === 'speak') for (const c of m.cards) { answered.speakOf++; if (c.counted > 0) answered.speak++; } else for (const it of m.items) for (const b of it.blanks) { answered.blanksOf++; if (b.said) answered.blanks++; } }
+  }
   return {
+    answered, sample: !!meta.sample,
     comment, columns: a.sections.map((s) => ({ id: s.id, title: s.title, column: s.column, marks: s.marks })),
     sid: S.sid, name: meta.name, cls: meta.cls, school: meta.school, assessment: a.id,
     startedAt: meta.startedAt, submittedAt: meta.submittedAt || null, status,
@@ -268,6 +275,14 @@ const ops = {
     const rows = (await Promise.all(Object.values(bySid).map((f) => store.getJSON(f.pathname)))).filter(Boolean);
     rows.sort((x, y) => (y.startedAt || 0) - (x.startedAt || 0));
     return { rows: rows.filter((r) => !r.archived), assessments: await ops.assessments() };
+  },
+
+  // Rebuilds every stored register row after the row format changes. Teacher only.
+  async resum(req, q) {
+    need(isTeacher(req, q), 401, 'Please sign in');
+    const sids = [...new Set((await store.list('sum/')).map((f) => (f.pathname.match(/^sum\/([a-z0-9]+)-/) || [])[1]).filter(Boolean))];
+    for (const sid of sids) { try { await saveSummary(await loadSession(sid)); } catch {} }
+    return { rebuilt: sids.length };
   },
 
   async session(req, q) {
