@@ -148,7 +148,7 @@ addEventListener('offline', () => queue.pending().then((p) => paintSync(p.length
 // ---------- 1. welcome ----------
 function welcome(error) {
   const resume = S && !S.finished;
-  shell(`<main class="welcome">
+  shell(`<header class="topbar"><span class="mark">${DIDI}Garima Didi</span><a class="teacher-link" href="/teacher.html">Teacher login</a></header><main class="welcome">
     <div class="greet"><span class="wave">${DIDI}</span><div class="bubble"><div class="big">नमस्ते!</div><h1>I am Garima Didi.</h1></div></div>
     <p class="intro-line">Today we will talk in English. I ask, you answer. It takes about ${A.minutes} minutes.</p>
     ${resume ? `<div class="page plain"><h3>Welcome back, ${esc(S.name)}</h3><p class="soft small" style="margin:.25rem 0 1rem">Your answers so far are saved.</p>

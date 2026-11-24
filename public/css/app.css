@@ -538,3 +538,6 @@ body.desk-page .btn[disabled] { background: #C9CFDC; }
 
 .t-sent li.err { color: inherit; font-weight: inherit; }
 .t-check .t-q { font-weight: 600; }
+
+.teacher-link { display: inline-flex; align-items: center; height: 2.5rem; padding: 0 1rem; border-radius: 99px; background: #fff; color: var(--ink); font: 600 .9375rem/1 var(--text); text-decoration: none; box-shadow: 0 3px 0 rgba(120, 80, 0, .2); }
+.welcome .greet { padding-top: .25rem; }

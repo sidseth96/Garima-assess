@@ -53,7 +53,7 @@ async function register() {
         <td class="tot">${r.total != null ? num(r.total) : ''}</td></tr>`).join('')}</tbody></table>`
       : '<div class="empty"><b>No tests yet</b>When a child finishes the test, their marks appear here.</div>'}</div>`;
   document.getElementById('out').onclick = () => { token = ''; localStorage.removeItem(TK); login(); };
-  document.getElementById('copy').onclick = async () => { const link = location.origin + '/test.html'; try { await navigator.clipboard.writeText(link); toast('Test link copied'); } catch { prompt('Copy this link', link); } };
+  document.getElementById('copy').onclick = async () => { const link = location.origin + '/'; try { await navigator.clipboard.writeText(link); toast('Test link copied'); } catch { prompt('Copy this link', link); } };
   app.querySelectorAll('tr[data-sid]').forEach((tr) => { tr.onclick = () => { location.hash = tr.dataset.sid; }; });
   if (done.length) {
     document.getElementById('csv').onclick = () => download(done);
