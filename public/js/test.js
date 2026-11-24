@@ -127,7 +127,7 @@ const rec = (() => {
       cancelAnimationFrame(raf); onLevel(0);
       if (!mr || mr.state === 'inactive') return res(null);
       mr.onstop = () => res({ blob: new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), mime: mr.mimeType || 'audio/webm', dur: Math.round((Date.now() - t0) / 1000) });
-      mr.stop();
+      setTimeout(() => mr.stop(), 450);   // keep listening a moment so the last word is not cut off
     });
   }
   return { mic, watch, unwatch: () => cancelAnimationFrame(raf), start, stop, get on() { return mr && mr.state === 'recording'; }, ok: () => !!(navigator.mediaDevices && window.MediaRecorder) };
