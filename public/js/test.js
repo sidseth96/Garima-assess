@@ -101,20 +101,22 @@ const rec = (() => {
   const mime = () => ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm'].find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
   async function mic() {
     if (stream && stream.active) return stream;
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = ctx.createAnalyser(); analyser.fftSize = 512; ctx.createMediaStreamSource(stream).connect(analyser);
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+    catch (e) { if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError' || e.name === 'NotFoundError')) throw e; stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }   // some phones reject the extra settings
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); analyser = ctx.createAnalyser(); analyser.fftSize = 512; ctx.createMediaStreamSource(stream).connect(analyser); }
+    catch { analyser = null; }   // the level meter is optional; recording still works without it
     return stream;
   }
   function watch(cb) {
     onLevel = cb; cancelAnimationFrame(raf);
+    if (!analyser) { const fake = () => { onLevel(0.3); raf = requestAnimationFrame(fake); }; return fake(); }
     const buf = new Uint8Array(analyser.fftSize);
     const loop = () => {
       analyser.getByteTimeDomainData(buf); let sum = 0;
       for (const v of buf) sum += (v - 128) * (v - 128);
       onLevel(Math.min(1, Math.sqrt(sum / buf.length) / 40)); raf = requestAnimationFrame(loop);
     };
-    if (ctx.state === 'suspended') ctx.resume(); loop();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {}); loop();
   }
   let active = 0, flush = null;
   function release() { try { if (mr && mr.state !== 'inactive') mr.stop(); } catch {} mr = null; }
@@ -192,6 +194,20 @@ function welcome(error) {
   };
 }
 
+// Why the microphone did not start, in words a child or parent can act on.
+function micHelp(e) {
+  const name = (e && e.name) || 'Error'; const ios = /iPhone|iPad|iPod/.test(navigator.userAgent); const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\//.test(navigator.userAgent);
+  let msg;
+  if (!navigator.mediaDevices || inApp) msg = `This page cannot use the microphone here. Open it in ${ios ? 'Safari' : 'Chrome'} instead: copy the link and paste it there.`;
+  else if (name === 'NotAllowedError' || name === 'SecurityError') msg = ios
+    ? 'The microphone is switched off for this page.<ol><li>Tap the button at the left of the address bar.</li><li>Tap Website Settings.</li><li>Set Microphone to Allow.</li><li>Come back and press the button again.</li></ol>If that is not there: open the Settings app, then Apps, Safari, Microphone, and choose Allow.'
+    : 'The microphone is switched off for this page.<ol><li>Tap the lock or settings icon beside the address.</li><li>Tap Permissions.</li><li>Turn on Microphone.</li><li>Press the button again.</li></ol>';
+  else if (name === 'NotFoundError') msg = 'This phone has no microphone that the page can use. Try another phone.';
+  else if (name === 'NotReadableError' || name === 'AbortError') msg = 'Another app is using the microphone. End any phone or WhatsApp call, close other apps, then press the button again.';
+  else msg = 'The microphone did not start. Close this page, open the link again, and press the button once more.';
+  return `<span class="mic-help"><b>${msg}</b><small>(${esc(name)})</small></span>`;
+}
+
 // ---------- 2. get ready: download everything, test the microphone ----------
 let loaded = false;
 async function check() {
@@ -223,7 +239,7 @@ async function check() {
       document.getElementById('mchelp').textContent = 'Now say: Hello Didi!';
       // Some phones give a very quiet signal. Never leave a child stuck here: after a few seconds, let them start.
       setTimeout(() => { if (micOk || !document.getElementById('mc')) return; micOk = true; const m = document.getElementById('mc'); m.className = 'ready ok'; m.textContent = 'Your microphone is on'; document.getElementById('mchelp').textContent = 'Your voice sounds quiet. Hold the phone close to your mouth when you answer.'; document.getElementById('mic').hidden = true; ready(); }, 6000);
-    } catch { document.getElementById('mchelp').innerHTML = '<span class="err">Please allow the microphone, then press the button again.</span>'; }
+    } catch (e) { document.getElementById('mchelp').innerHTML = micHelp(e); }
   };
   document.getElementById('start').onclick = async () => { rec.unwatch(); if (S.pos === 0 && !Object.keys(S.done).length) await greet(); run(); };
   if (!loaded) {
@@ -309,7 +325,7 @@ function run() {
   const begin = async () => {
     voice.stop(); stopMine(); hearBtn.classList.remove('playing'); document.getElementById('didi')?.classList.remove('speaking');
     voiced = 0;
-    try { await rec.start(level); } catch { return idle('Please allow the microphone and try again'); }
+    try { await rec.start(level); } catch (e) { return idle(e && e.name === 'NotReadableError' ? 'Another app is using the microphone. Close it and try again.' : 'Please allow the microphone and try again'); }
     listening(0);
   };
   const addMore = () => { voice.stop(); stopMine(); if (!rec.more(level)) return begin(); listening(last ? last.dur : 0); };

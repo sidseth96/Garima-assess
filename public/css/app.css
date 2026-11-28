@@ -568,3 +568,8 @@ body.zooming .dock-say { color: #fff; } body.zooming .dock-say.live { color: #FF
 body.zooming .dock .link { color: #fff; }
 
 .gap-text .count { width: 1.75rem; left: -2.05rem; font-size: .9375rem; }
+
+.mic-help { display: block; color: #8E1F1A; font-size: 1rem; line-height: 1.4; }
+.mic-help b { font-weight: 600; }
+.mic-help ol { margin: .375rem 0; padding-left: 1.25rem; font-weight: 500; }
+.mic-help small { display: block; color: var(--ink-soft); font-size: .75rem; margin-top: .25rem; }
