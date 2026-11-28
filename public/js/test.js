@@ -67,7 +67,7 @@ const voice = (() => {
     const worker = async () => {
       while (list.length) {
         const k = list.shift();
-        try { const r = await fetch(api('say', { a: AID, c: k, v: A.vv || '' })); if (r.ok) urls[k] = URL.createObjectURL(await r.blob()); } catch {}
+        try { const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 12000); const r = await fetch(api('say', { a: AID, c: k, v: A.vv || '' }), { signal: ac.signal }); if (r.ok) urls[k] = URL.createObjectURL(await r.blob()); clearTimeout(tm); } catch {}
         onProgress(++done / keys.length);
       }
     };
@@ -217,10 +217,12 @@ async function check() {
       await rec.mic(); let loud = 0;
       rec.watch((l) => {
         const bar = document.getElementById('mcbar'); if (!bar) return rec.unwatch();
-        bar.style.width = Math.round(l * 100) + '%';
-        if (l > 0.18 && ++loud > 12 && !micOk) { micOk = true; const m = document.getElementById('mc'); m.className = 'ready ok'; m.textContent = 'I can hear you clearly'; document.getElementById('mchelp').textContent = ''; document.getElementById('mic').hidden = true; ready(); }
+        bar.style.width = Math.round(Math.min(1, Math.sqrt(l) * 1.4) * 100) + '%';
+        if (l > 0.04 && ++loud > 8 && !micOk) { micOk = true; const m = document.getElementById('mc'); m.className = 'ready ok'; m.textContent = 'I can hear you clearly'; document.getElementById('mchelp').textContent = ''; document.getElementById('mic').hidden = true; ready(); }
       });
       document.getElementById('mchelp').textContent = 'Now say: Hello Didi!';
+      // Some phones give a very quiet signal. Never leave a child stuck here: after a few seconds, let them start.
+      setTimeout(() => { if (micOk || !document.getElementById('mc')) return; micOk = true; const m = document.getElementById('mc'); m.className = 'ready ok'; m.textContent = 'Your microphone is on'; document.getElementById('mchelp').textContent = 'Your voice sounds quiet. Hold the phone close to your mouth when you answer.'; document.getElementById('mic').hidden = true; ready(); }, 6000);
     } catch { document.getElementById('mchelp').innerHTML = '<span class="err">Please allow the microphone, then press the button again.</span>'; }
   };
   document.getElementById('start').onclick = async () => { rec.unwatch(); if (S.pos === 0 && !Object.keys(S.done).length) await greet(); run(); };
@@ -295,7 +297,7 @@ function run() {
     document.getElementById('back')?.addEventListener('click', () => { voice.stop(); rec.release(); S.pos--; save(); run(); });
   };
   let voiced = 0, misses = 0, nudged = false, rev = 0;
-  const level = (l) => { if (l > 0.12) voiced++; const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); };
+  const level = (l) => { if (l > 0.04) voiced++; const b = document.getElementById('rec'); if (b) b.style.setProperty('--lvl', l.toFixed(2)); };
   const listening = (from) => {
     dock.classList.remove('after');
     dock.innerHTML = `<p class="dock-say live">I am listening. Press to stop.</p><span class="left timer" id="tm"></span><button class="rec on" id="rec" aria-label="Stop recording">${icon.stop}</button><span class="right"></span>`;
@@ -315,11 +317,11 @@ function run() {
     clearInterval(tick); const r = await rec.stop();
     if (!r || r.dur < 1 || r.blob.size < 800) { rec.release(); return idle('That was too short. Try again.'); }
     // Nothing loud enough to be a voice: do not save silence as an answer.
-    if (voiced < 15 && !last) {
+    if (voiced < 10 && !last && misses < 1) {
       rec.release(); misses++;
       const didi = document.getElementById('didi'); didi?.classList.add('speaking');
       voice.say('nohear', 'I could not hear you. Come closer and say it again.').then(() => didi?.classList.remove('speaking'));
-      return idle(misses > 1 ? 'I still cannot hear you. Hold the phone close and speak up.' : 'I could not hear you. Come closer and try again.');
+      return idle('I could not hear you. Hold the phone close and try again.');
     }
     last = r; S.done[card.id] = 'recorded'; save();
     await queue.add({ id: S.sid + '|' + card.id, rev: ++rev, sid: S.sid, key: S.key, item: card.id, blob: r.blob, mime: r.mime, dur: r.dur, sent: false });
